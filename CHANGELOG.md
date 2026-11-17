@@ -3,6 +3,12 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v11 · 2026-11-17 · Pictures that match the sound, captions back on phones
+- The short explanation under each sound tile ("Race car: vvvroom!") shows on phones again, in a smaller size.
+- 🐸 G is now 🦃 **"Turkey talk: gobble gobble!"**: a turkey really says the sound, where a frog doesn't.
+  The "Just the sound" pictures, coaching card and tip match, and "gobble gobble" is a new practice item. Frog stays as a G word.
+- 🐕 Endings caption now explains the picture: **"Doggy's tail: say the end!"**
+
 ## v10 · 2026-11-17 · SH is "the quiet sound"
 - SH now uses 🤫 **"Quiet sound: shhh!"** instead of 🌊 ocean waves, matching the finger-to-lips cue speech therapists commonly use.
   This changes the home tile, the "Just the sound" pictures, the coaching card hint and the grown-up tip.

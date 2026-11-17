@@ -9,7 +9,7 @@ On by default:
 - 🎵 **L**, including L-blends (blue, clock, flag)
 - 🤫 **SH**
 - 🏎️ **V**
-- 🐸 **G**, including "K or G?" pairs (coat → goat)
+- 🦃 **G**, including "K or G?" pairs (coat → goat)
 - 🐯 **R**
 - 🚂 **CH**
 

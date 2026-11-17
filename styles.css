@@ -633,8 +633,9 @@ th { color: var(--muted); font-weight: 700; }
   .counter { padding: 6px 12px; font-size: 18px; }
   .home-top { font-size: 18px; }
 
-  /* Home: no tile captions (he can't read them yet; grown-ups know them) */
-  .tile-text { display: none; }
+  /* Home: smaller tile captions so they fit */
+  .tile-text, .home.many .tile-text { font-size: 12px; line-height: 1.15; }
+  .home .tile { gap: 2px; padding: 8px 6px; }
   .home.many .tile, .home.lots .tile { min-height: 116px; }
   .home .tile { min-height: 140px; }
 
@@ -661,10 +662,11 @@ th { color: var(--muted); font-weight: 700; }
   .pill { padding: 8px 14px; font-size: 16px; min-height: 44px; }
   .icon-btn { width: 46px; height: 46px; font-size: 24px; }
   .counter { padding: 4px 12px; font-size: 17px; }
-  .tile-text { display: none; }
+  .tile-text, .home.many .tile-text { font-size: 12px; line-height: 1.1; }
 
   /* Home: mascot and greeting on one line, tiles fill the rest */
   .home.screen {
+    row-gap: 6px;
     display: grid;
     grid-template-columns: 1fr auto;
     grid-template-rows: auto 1fr auto;
@@ -749,4 +751,8 @@ th { color: var(--muted); font-weight: 700; }
   .big-btn .ico { font-size: 30px; }
   .judge { min-height: 50px; }
   .coach .pill { min-height: 42px; }
+  .home.many .tile, .home.lots .tile { min-height: 94px; }
+  .home .mascot, .home.many .mascot, .home.lots .mascot { font-size: 40px; }
+  .hello h1 { font-size: 30px; }
+  .hello p { display: none; }
 }

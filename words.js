@@ -25,7 +25,7 @@ window.SOUNDS = {
   END: {
     label: "Endings",
     cue: "🐕",
-    cueText: "Don't forget the tail!",
+    cueText: "Doggy's tail: say the end!",
     color: "#ffe29a",
     dark: "#9a6b00",
     highlight: "ending",
@@ -313,8 +313,8 @@ window.SOUNDS = {
   // ------------------------------------------------------------------
   G: {
     label: "G",
-    cue: "🐸",
-    cueText: "Frog gulp: g-g-g!",
+    cue: "🦃",
+    cueText: "Turkey talk: gobble gobble!",
     color: "#b9d6f2",
     dark: "#2d6aa3",
     highlight: /g+/gi,
@@ -322,17 +322,18 @@ window.SOUNDS = {
     level: "start",
     tip:
       "G and K are made the same way — the back of the tongue pushes up — but G has the voice ON. " +
-      "Put his hand on your throat: G buzzes, K doesn't. Gulp like a frog: \"g-g-g\". " +
+      "Put his hand on your throat: G buzzes, K doesn't. Gobble like a turkey: \"gobble gobble\", or \"g-g-g\". " +
       "The \"K or G\" pairs (coat / goat) show that the buzz changes the word.",
-    coach: { pic: "🐸", how: "Back of your tongue goes up", hint: "Hand on your throat, feel the buzz: g-g-g", model: "g-g-g", modelSay: "guh, guh, guh" },
+    coach: { pic: "🦃", how: "Back of your tongue goes up", hint: "Hand on your throat, feel the buzz: g-g-g", model: "g-g-g", modelSay: "guh, guh, guh" },
     levels: [
       lvl("syllables", "Just the sound", "ga, go, goo", [
-        { w: "g-g-g", say: "guh, guh, guh", p: "🐸" },
-        { w: "ga", say: "gah", p: "🐸" },
-        { w: "gee", say: "ghee", p: "🐸" },
-        { w: "go", p: "🐸" },
-        { w: "goo", p: "🐸" },
-        { w: "gulp", p: "🐸" },
+        { w: "g-g-g", say: "guh, guh, guh", p: "🦃" },
+        { w: "ga", say: "gah", p: "🦃" },
+        { w: "gee", say: "ghee", p: "🦃" },
+        { w: "go", p: "🦃" },
+        { w: "goo", p: "🦃" },
+        { w: "gulp", p: "🥤" },
+        { w: "gobble gobble", p: "🦃" },
       ]),
       lvl("pairs", "K or G?", "coat → goat", [
         { pair: "coat", pp: "🧥", w: "goat", p: "🐐" },
