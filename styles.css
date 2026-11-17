@@ -520,6 +520,14 @@ button.slot { padding: 0; border-radius: 22px; }
 .sound-card details summary { cursor: pointer; font-weight: 700; color: var(--d); font-size: 16px; }
 .sound-card details p { margin-top: 8px; }
 .level-hint { font-weight: 600; }
+.sound-list { display: flex; flex-direction: column; gap: 10px; }
+.sound-card.off { border-color: var(--line); padding: 10px 14px; }
+.sound-toggle { align-items: center; }
+.sound-toggle .sc-cue { font-size: 32px; line-height: 1; }
+.sound-toggle .sc-name { display: flex; flex-direction: column; font-size: 19px; }
+.sound-toggle .sc-name small { font-size: 15px; font-weight: 600; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { background: var(--c); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 16px; }
 table { border-collapse: collapse; width: 100%; font-size: 16px; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 700; }

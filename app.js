@@ -926,13 +926,19 @@
   function show(name) {
     if (screen === "play" && name !== "play") { resetRecording(); stopSpeaking(); stopMirror(); }
     if (screen === "grown" && name !== "grown") { stopGrownRecord(); stopSpeaking(); clearPendingPhoto(); }
+    if (name === "grown" && screen === "sounds") { screen = name; render(); scrollToId("sounds-panel"); return; }
     screen = name;
     render();
     window.scrollTo(0, 0);
   }
 
+  function scrollToId(id) {
+    const el = document.getElementById(id);
+    if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 12);
+  }
+
   function render() {
-    ({ home: renderHome, play: renderPlay, reward: renderReward, book: renderBook, grown: renderGrown })[screen]();
+    ({ home: renderHome, play: renderPlay, reward: renderReward, book: renderBook, grown: renderGrown, sounds: renderSounds })[screen]();
   }
 
   // ---------- Home ----------
@@ -1452,22 +1458,62 @@
     refreshMyList();
   }
 
-  function renderGrown() {
-    const st = S();
-    const soundCards = Object.entries(SOUNDS).map(([k, s]) => `
-      <div class="sound-card" style="${soundVars(k)}">
-        <h3><span>${s.cue}</span> ${esc(s.label)}${s.label.length > 2 ? "" : " sound"}</h3>
-        <label class="toggle"><input type="checkbox" data-set="sound-on" data-sound="${k}"
-          ${st.sounds[k].on ? "checked" : ""}> Show this sound on the home screen</label>
-        <label class="field">Level
+  // ---------- Grown-ups → Sounds & levels (its own screen, so Grown-ups stays short) ----------
+  const GROUPS = window.SOUND_GROUPS || [{ id: "all", name: "Sounds", note: "" }];
+
+  function soundCardHTML(k) {
+    const s = SOUNDS[k], st = S();
+    const on = st.sounds[k].on;
+    return `
+      <div class="sound-card ${on ? "on" : "off"}" style="${soundVars(k)}">
+        <label class="toggle sound-toggle"><input type="checkbox" data-set="sound-on" data-sound="${k}" ${on ? "checked" : ""}>
+          <span class="sc-cue" aria-hidden="true">${s.cue}</span>
+          <span class="sc-name">${esc(s.label)}${s.label.length > 2 ? "" : " sound"}<small>${esc(s.cueText)}</small></span>
+        </label>
+        ${on ? `<label class="field">Level
           <select data-set="sound-level" data-sound="${k}">
             ${levelsOf(k).map((l) => `<option value="${l.id}" ${l.id === st.sounds[k].level ? "selected" : ""}>
               ${esc(l.name)} (${l.items.length})</option>`).join("")}
           </select>
           <span class="note level-hint" id="hint-${k}">e.g. ${esc((findLevel(k, st.sounds[k].level) || {}).hint || "")}</span>
         </label>
-        <details><summary>How to coach the ${esc(s.label)} sound</summary><p>${esc(s.tip)}</p></details>
-      </div>`).join("");
+        <details><summary>How to coach the ${esc(s.label)} sound</summary><p>${esc(s.tip)}</p></details>` : ""}
+      </div>`;
+  }
+
+  function renderSounds() {
+    const st = S();
+    const onCount = Object.keys(SOUNDS).filter((k) => st.sounds[k].on).length;
+    const groups = GROUPS.map((g) => {
+      const keys = Object.keys(SOUNDS).filter((k) => g.id === "all" || (SOUNDS[k].group || "later") === g.id);
+      if (!keys.length) return "";
+      return `<section class="panel">
+          <h2>${esc(g.name)}</h2>
+          ${g.note ? `<p class="note">${esc(g.note)}</p>` : ""}
+          <div class="sound-list">${keys.map(soundCardHTML).join("")}</div>
+        </section>`;
+    }).join("");
+    app.innerHTML = `
+      <div class="screen grown sounds-screen">
+        <header class="book-head">
+          <button class="icon-btn" data-act="grown-back" aria-label="Back to Grown-ups">⬅️</button>
+          <h1>Sounds &amp; levels</h1>
+        </header>
+        <section class="panel">
+          <p>Tick a sound to put it on his home screen. Only ticked sounds show up for him.
+            <b>${onCount}</b> on right now.</p>
+          <p class="note">Ask his speech therapist which sounds and levels to work on. The ages below are rough guides only.</p>
+        </section>
+        ${groups}
+      </div>`;
+  }
+
+  function renderGrown() {
+    const st = S();
+    const onKeys = Object.keys(SOUNDS).filter((k) => st.sounds[k].on);
+    const soundsSummary = onKeys.length
+      ? onKeys.map((k) => `<span class="chip" style="${soundVars(k)}">${SOUNDS[k].cue} ${esc(SOUNDS[k].label)}</span>`).join("")
+      : `<span class="note">None yet: he'll see an empty home screen.</span>`;
 
     app.innerHTML = `
       <div class="screen grown">
@@ -1536,9 +1582,11 @@
           <div id="voice-box">${voiceBoxHTML()}</div>
         </section>
 
-        <section class="panel">
+        <section class="panel" id="sounds-panel">
           <h2>Sounds &amp; levels</h2>
-          ${soundCards}
+          <p class="note">On his home screen now:</p>
+          <div class="chips">${soundsSummary}</div>
+          <button class="pill main" data-act="sounds-menu" style="align-self:flex-start">🔤 Choose sounds &amp; levels (${Object.keys(SOUNDS).length} sounds) ›</button>
         </section>
 
         <section class="panel">
@@ -1605,7 +1653,10 @@
       case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree": case "realSounds":
         st[key] = el.checked; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
-      case "sound-on": st.sounds[el.dataset.sound].on = el.checked; break;
+      case "sound-on":
+        st.sounds[el.dataset.sound].on = el.checked;
+        if (screen === "sounds") { save(); const y = window.scrollY; render(); window.scrollTo(0, y); return; }
+        break;
       case "sound-level": {
         st.sounds[el.dataset.sound].level = el.value;
         const hint = document.getElementById("hint-" + el.dataset.sound);
@@ -1623,6 +1674,8 @@
   const actions = {
     start: (b) => startRound(b.dataset.sound),
     home: () => show("home"),
+    "sounds-menu": () => show("sounds"),
+    "grown-back": () => show("grown"),
     book: () => show("book"),
     listen: () => { player.pause(); sayCurrent(); },
     "coach-say": () => { player.pause(); sayModel(); },

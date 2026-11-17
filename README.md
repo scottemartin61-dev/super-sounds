@@ -13,7 +13,13 @@ On by default:
 - 🐯 **R**
 - 🚂 **CH**
 
-Off by default (turn on in Grown-ups): 👅 **TH**, 🐍 **S-blends**.
+Off by default (turn on in Grown-ups → **Sounds & levels**), grouped by the age most children learn them:
+- Early: 🍿 **P**, ⚽ **B**, 😋 **M**, ⏰ **T**, 🥁 **D**, 👃 **N**, 🌬️ **H**, 👻 **W**, 🙌 **Y**
+- Middle: 📷 **K**, 🎈 **F**, 🔔 **NG**
+- Later: 🦘 **J**, 🐍 **S**, 🐝 **Z**, 👅 **TH**
+- Word patterns: 🛑 **S-blends**, 🥶 **R-blends**
+
+Only the sounds a grown-up ticks show on his home screen. New sounds live in [words-more.js](words-more.js).
 
 ## How a round works
 1. He taps a sound. The iPad says each word slowly. Tap 🔊 to hear it again.

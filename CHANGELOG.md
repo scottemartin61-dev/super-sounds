@@ -3,6 +3,17 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v13 · 2026-11-17 · 16 more sounds, in their own Sounds & levels menu
+- **16 new sounds, all off by default**, so his home screen only shows what a grown-up picks:
+  🍿 P, ⚽ B, 😋 M, ⏰ T, 🥁 D, 👃 N, 🌬️ H, 👻 W, 🙌 Y, 📷 K, 🎈 F, 🔔 NG, 🦘 J, 🐍 S, 🐝 Z, 🥶 R-blends.
+  Each has a picture that makes the sound ("Popcorn pops: p-p-p!"), levels from the sound on its own up to silly sentences,
+  a coaching card and a grown-up tip. 25 sounds in total.
+- **Grown-ups → Sounds & levels is now its own screen** (tap "Choose sounds & levels"), so the main Grown-ups screen stays short.
+  It lists sounds in four groups (early, middle, later, word patterns) with rough age guides. Tick a sound to put it on his
+  home screen; its level menu and coaching tips appear once it's ticked.
+- The main Grown-ups screen shows which sounds are on his home screen at a glance.
+- S-blends now uses 🛑 ("sss-top!"), because plain S uses the 🐍 snake.
+
 ## v12 · 2026-11-17 · Tidier Grown-ups screen
 - **Grown-up voice and My words lists:** on phones the word no longer gets squeezed to one letter per line.
   The Record / ▶️ / 🗑 buttons move to their own line underneath when there isn't room (iPad stays on one line).
