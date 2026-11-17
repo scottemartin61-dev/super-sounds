@@ -1,18 +1,29 @@
 # Super Sounds
 
-A gentle speech-practice game for a 5-year-old working on **R**, **CH** and **L**.
+A gentle speech-practice game for a 5-year-old.
 It's a web app that installs on an iPad's Home Screen and then works like a normal app, including offline.
 
+## Sounds
+On by default:
+- 🐕 **Endings**: saying the last sound of words ("watch" not "wa"). Includes word pairs like toe → toad.
+- 🎵 **L**, including L-blends (blue, clock, flag)
+- 🌊 **SH**
+- 🏎️ **V**
+- 🐸 **G**, including "K or G?" pairs (coat → goat)
+
+Off by default (turn on in Grown-ups): 🐯 **R**, 🚂 **CH**, 👅 **TH**, 🐍 **S-blends**.
+
 ## How a round works
-1. He taps a sound (🐯 R, 🚂 CH, 🎵 L). The iPad says each word slowly. Tap 🔊 to hear it again.
-2. He taps 🎤 **My turn**, says the word, and 👂 **Hear me** plays his voice back.
+1. He taps a sound. The iPad says each word slowly. Tap 🔊 to hear it again.
+2. He taps 🎤 **My turn** and says the word. A **big-voice meter** fills up as he talks, to encourage speaking out loud rather than whispering. 👂 **Hear me** plays his voice back.
 3. A grown-up taps ⭐ **Great!** or 🔁 **Again**. After 3 tries the game moves on by itself.
 4. After 5 words he opens a 🎁 and gets a new sticker for his book, every time.
 
 The **Grown-ups** button on the home screen only opens if you press and hold it for 2 seconds. In there you can set:
 - his name and sticker theme
-- which sounds show and the level for each one (just the sound → start / middle / end of words → sentences)
-- words per round, talking speed, microphone and chimes
+- which sounds show and the level for each one (e.g. just the sound → start / middle / end of words → sentences)
+- words per round, talking speed, microphone, chimes
+- the big-voice meter, and how loud counts as a big voice (Easy / Medium / Hard)
 
 It also has coaching tips for each sound and his progress (tries, % great, tricky words, days practised).
 
@@ -27,6 +38,7 @@ Tips:
 - Turn on **Guided Access** to keep him in the app. Go to Settings → Accessibility → Guided Access, then triple-click the top button while the app is open.
 - If he can't hear the voice, check that the iPad's side **mute switch** is off and the volume is up.
 - Progress and stickers are saved on that iPad only. Deleting the Home Screen icon erases them.
+- Some pictures use newer emoji. Keep the iPad updated (iPadOS 17 or later) so they all show.
 
 ## Changing words
 Edit [words.js](words.js). Each word is `{ w: "word", p: "emoji" }`. Add `say: "..."` if the voice mispronounces something.

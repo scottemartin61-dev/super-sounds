@@ -3,8 +3,9 @@
   "use strict";
 
   const SOUNDS = window.SOUNDS;
-  const LEVELS = window.LEVELS;
   const THEMES = window.THEMES;
+  const levelsOf = (k) => SOUNDS[k].levels;
+  const findLevel = (k, id) => levelsOf(k).find((l) => l.id === id);
   const app = document.getElementById("app");
   const toastEl = document.getElementById("toast");
 
@@ -24,7 +25,11 @@
     autoSay: true,
     mic: true,
     sfx: true,
+    voiceMeter: true,
+    voiceLevel: "medium",
   };
+  // How loud (RMS) counts as a "big voice" for each meter setting.
+  const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
 
   function loadData() {
     let d = {};
@@ -34,9 +39,12 @@
     d.settings.sounds = {};
     for (const k of Object.keys(SOUNDS)) {
       const saved = (s.sounds || {})[k] || {};
-      const level = LEVELS.some((l) => l.id === saved.level) ? saved.level : "start";
-      d.settings.sounds[k] = { on: saved.on !== false, level };
+      const def = SOUNDS[k];
+      const level = findLevel(k, saved.level) ? saved.level
+        : findLevel(k, def.level) ? def.level : levelsOf(k)[0].id;
+      d.settings.sounds[k] = { on: typeof saved.on === "boolean" ? saved.on : !!def.on, level };
     }
+    if (!VOICE_THRESHOLDS[d.settings.voiceLevel]) d.settings.voiceLevel = "medium";
     if (!THEMES[d.settings.theme]) d.settings.theme = "animals";
     d.stickers = d.stickers || {};   // theme -> [collected stickers]
     d.stars = d.stars || 0;
@@ -67,6 +75,26 @@
       if (!m[0]) r.lastIndex++;
     }
     return out + esc(text.slice(last));
+  }
+
+  // Highlights the final consonant(s) — the word's "tail" — of chosen words.
+  // words: list of words to mark (lower case), or null = mark the last word.
+  function highlightEndings(text, words) {
+    const tokens = text.match(/[A-Za-z']+|[^A-Za-z']+/g) || [];
+    const wordIdx = tokens.map((t, i) => (/^[A-Za-z']+$/.test(t) ? i : -1)).filter((i) => i >= 0);
+    const lastWord = wordIdx[wordIdx.length - 1];
+    return tokens.map((t, i) => {
+      const target = words ? words.includes(t.toLowerCase()) : i === lastWord;
+      const m = target && t.match(/[bcdfghjklmnpqrstvxz]+e?$/i);
+      if (!m) return esc(t);
+      return esc(t.slice(0, m.index)) + "<mark>" + esc(m[0]) + "</mark>";
+    }).join("");
+  }
+
+  function highlightItem(soundKey, item) {
+    const h = SOUNDS[soundKey].highlight;
+    if (h === "ending") return highlightEndings(item.w, item.hl || null);
+    return highlight(item.w, h);
   }
 
   function dayKey(date = new Date()) {
@@ -216,8 +244,12 @@
     }
     rec.mr.ondataavailable = (e) => { if (e.data && e.data.size) rec.chunks.push(e.data); };
     rec.mr.onstop = () => {
+      const peak = stopMeter();
       stopStream();
       if (token !== rec.token) return;
+      if (meterOn() && peak !== null) {
+        setMsg(peak >= voiceThreshold() ? "Big voice! 📣" : "Try your BIG voice! 📣");
+      }
       if (rec.url) URL.revokeObjectURL(rec.url);
       const blob = new Blob(rec.chunks, { type: (rec.mr && rec.mr.mimeType) || type || "audio/mp4" });
       rec.url = blob.size ? URL.createObjectURL(blob) : null;
@@ -228,6 +260,7 @@
     rec.mr.start();
     rec.state = "recording";
     updateKidRow();
+    startMeter(stream);
     rec.timer = setTimeout(stopRecording, RECORD_SECONDS * 1000);
   }
 
@@ -246,12 +279,62 @@
     clearTimeout(rec.timer);
     if (rec.mr && rec.mr.state === "recording") { try { rec.mr.stop(); } catch (e) {} }
     rec.mr = null;
+    stopMeter();
+    const m = app.querySelector(".meter");
+    if (m) m.classList.add("hidden");
     stopStream();
     player.pause();
     player.removeAttribute("src");
     if (rec.url) URL.revokeObjectURL(rec.url);
     rec.url = null;
     rec.state = "idle";
+  }
+
+  // ---------- Big-voice meter (encourages talking out loud, not whispering) ----------
+  const meter = { src: null, an: null, raf: 0, peak: 0 };
+  const meterOn = () => S().mic && S().voiceMeter;
+  const voiceThreshold = () => VOICE_THRESHOLDS[S().voiceLevel] || VOICE_THRESHOLDS.medium;
+
+  function startMeter(stream) {
+    if (!meterOn()) return;
+    const ctx = audioCtx();
+    if (!ctx) return;
+    try {
+      meter.src = ctx.createMediaStreamSource(stream);
+      meter.an = ctx.createAnalyser();
+      meter.an.fftSize = 1024;
+      meter.src.connect(meter.an);
+    } catch (e) { meter.src = meter.an = null; return; }
+    const buf = new Float32Array(meter.an.fftSize);
+    const el = app.querySelector(".meter");
+    const fill = el && el.querySelector(".meter-fill");
+    if (el) el.classList.remove("hidden", "full");
+    meter.peak = 0;
+    let shown = 0;
+    const tick = () => {
+      if (!meter.an) return;
+      meter.an.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const rms = Math.sqrt(sum / buf.length);
+      meter.peak = Math.max(meter.peak, rms);
+      shown = Math.max(rms, shown * 0.92);
+      if (fill) fill.style.width = Math.min(100, (shown / voiceThreshold()) * 100) + "%";
+      if (el) el.classList.toggle("full", meter.peak >= voiceThreshold());
+      meter.raf = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  // Stops the meter; returns the loudest level heard (or null if it wasn't running).
+  function stopMeter() {
+    cancelAnimationFrame(meter.raf);
+    const ran = !!meter.an;
+    try { if (meter.src) meter.src.disconnect(); } catch (e) {}
+    meter.src = meter.an = null;
+    const fill = app.querySelector(".meter-fill");
+    if (fill && ran) fill.style.width = Math.min(100, (meter.peak / voiceThreshold()) * 100) + "%";
+    return ran ? meter.peak : null;
   }
 
   function playBack() {
@@ -292,13 +375,13 @@
       return `<button class="tile" style="${soundVars(k)}" data-act="start" data-sound="${k}"
           aria-label="Practise the ${esc(s.label)} sound">
           <span class="tile-cue">${s.cue}</span>
-          <span class="tile-letter">${esc(s.label)}</span>
+          <span class="tile-letter ${s.label.length > 2 ? "long" : ""}">${esc(s.label)}</span>
           <span class="tile-text">${esc(s.cueText)}</span>
         </button>`;
     }).join("");
 
     app.innerHTML = `
-      <div class="screen home">
+      <div class="screen home ${on.length > 3 ? "many" : ""}">
         <header class="home-top">
           <span class="counter" aria-label="${data.stars} stars">⭐ ${data.stars}</span>
           <span class="counter" aria-label="${collected().length} stickers">📖 ${collected().length}</span>
@@ -325,7 +408,8 @@
 
   // Pick words for a round. Words he finds tricky come up a bit more often.
   function pickWords(sound, level, n) {
-    const pool = SOUNDS[sound].levels[level] || [];
+    const lv = findLevel(sound, level);
+    const pool = lv ? lv.items : [];
     if (!pool.length) return [];
     const weighted = pool.map((item) => {
       const st = data.stats[statKey(sound, level, item)];
@@ -352,14 +436,16 @@
     const item = currentItem();
     const btn = app.querySelector('[data-act="listen"]');
     btn && btn.classList.add("active");
-    say(item.say || item.w, () => btn && btn.classList.remove("active"));
+    const word = item.say || item.w;
+    const text = item.pair ? `${item.pair} ... ${word}` : word;
+    say(text, () => btn && btn.classList.remove("active"));
   }
 
   // ---------- Play ----------
   function renderPlay() {
     const s = SOUNDS[round.sound];
     const item = currentItem();
-    const lvl = LEVELS.find((l) => l.id === round.level);
+    const lvl = findLevel(round.sound, round.level);
     const dots = round.items.map((_, i) =>
       `<span class="dot ${i < round.idx ? "done" : i === round.idx ? "now" : ""}"></span>`).join("");
     const long = item.w.length > 12;
@@ -373,9 +459,12 @@
           <div class="stars" aria-label="${data.stars} stars">⭐ ${data.stars}</div>
         </header>
         <div class="cue">${s.cue} ${esc(s.label)} · ${esc(s.cueText)}</div>
-        <main class="card" aria-label="${esc(lvl ? lvl.name : "")}">
+        <main class="card ${item.pair ? "has-pair" : ""} ${mic && S().voiceMeter ? "has-meter" : ""}" aria-label="${esc(lvl ? lvl.name : "")}">
+          ${item.pair ? `<div class="pair"><span aria-hidden="true">${item.pp}</span> ${esc(item.pair)} <span class="arrow">➜</span></div>` : ""}
           <div class="pic" aria-hidden="true">${item.p}</div>
-          <div class="word ${long ? "long" : ""}">${highlight(item.w, s.highlight)}</div>
+          <div class="word ${long ? "long" : ""}">${highlightItem(round.sound, item)}</div>
+          ${mic && S().voiceMeter ? `<div class="meter hidden" aria-hidden="true">
+            <span>🔈</span><div class="meter-track"><div class="meter-fill"></div></div><span>📣</span></div>` : ""}
           <div class="msg" id="msg" aria-live="polite"></div>
         </main>
         <section class="kid-row ${mic ? "" : "two"}">
@@ -555,7 +644,7 @@
   function statsHTML() {
     const rows = [];
     for (const [k, snd] of Object.entries(SOUNDS)) {
-      for (const lv of LEVELS) {
+      for (const lv of snd.levels) {
         let t = 0, g = 0;
         const prefix = `${k}|${lv.id}|`;
         for (const [key, v] of Object.entries(data.stats)) {
@@ -593,13 +682,13 @@
     const st = S();
     const soundCards = Object.entries(SOUNDS).map(([k, s]) => `
       <div class="sound-card" style="${soundVars(k)}">
-        <h3><span>${s.cue}</span> ${esc(s.label)} sound</h3>
+        <h3><span>${s.cue}</span> ${esc(s.label)}${s.label.length > 2 ? "" : " sound"}</h3>
         <label class="toggle"><input type="checkbox" data-set="sound-on" data-sound="${k}"
           ${st.sounds[k].on ? "checked" : ""}> Show this sound on the home screen</label>
         <label class="field">Level
           <select data-set="sound-level" data-sound="${k}">
-            ${LEVELS.map((l) => `<option value="${l.id}" ${l.id === st.sounds[k].level ? "selected" : ""}>
-              ${esc(l.name)} — ${esc(l.hint)} (${(s.levels[l.id] || []).length} items)</option>`).join("")}
+            ${s.levels.map((l) => `<option value="${l.id}" ${l.id === st.sounds[k].level ? "selected" : ""}>
+              ${esc(l.name)} — ${esc(l.hint)} (${l.items.length} items)</option>`).join("")}
           </select>
         </label>
         <details><summary>How to coach the ${esc(s.label)} sound</summary><p>${esc(s.tip)}</p></details>
@@ -654,6 +743,12 @@
             Use the microphone (My turn / Hear me)</label>
           <label class="toggle"><input type="checkbox" data-set="sfx" ${st.sfx ? "checked" : ""}>
             Gentle chimes</label>
+          <label class="toggle"><input type="checkbox" data-set="voiceMeter" ${st.voiceMeter ? "checked" : ""}>
+            Big-voice meter while recording (encourages talking out loud instead of whispering)</label>
+          <div class="field">How loud counts as a big voice
+            ${radioGroup("voiceLevel", [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]], st.voiceLevel)}
+            <span class="note">If the meter never fills when he talks in a normal voice, choose Easy.</span>
+          </div>
           <button class="pill" data-act="test-voice" style="align-self:flex-start">🔊 Test the voice</button>
         </section>
 
@@ -682,7 +777,8 @@
       case "theme": st.theme = el.value; break;
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
-      case "autoSay": case "mic": case "sfx": st[key] = el.checked; break;
+      case "autoSay": case "mic": case "sfx": case "voiceMeter": st[key] = el.checked; break;
+      case "voiceLevel": st.voiceLevel = el.value; break;
       case "sound-on": st.sounds[el.dataset.sound].on = el.checked; break;
       case "sound-level": st.sounds[el.dataset.sound].level = el.value; break;
     }
@@ -704,7 +800,7 @@
     skip: onSkip,
     open: openGift,
     "again-round": () => startRound(round.sound),
-    "test-voice": () => say("Hi! Let's practise. Rabbit. Chair. Lion."),
+    "test-voice": () => say("Hi! Let's practise. Boat. Lion. Fish."),
     "reset-progress": () => {
       if (confirm("Reset all progress and stars? Stickers are kept.")) {
         data.stats = {}; data.days = {}; data.stars = 0; save(); render(); toast("Progress reset.");
