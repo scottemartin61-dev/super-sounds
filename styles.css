@@ -612,3 +612,133 @@ th { color: var(--muted); font-weight: 700; }
   .judge { font-size: 19px; padding: 0 14px; }
   .grown-row .label { width: 100%; }
 }
+
+/* =====================================================================
+   Phones. iPads never match these (even an iPad mini is 744px wide and 744px+ tall).
+   ===================================================================== */
+
+/* Phone, upright */
+@media (max-width: 600px) {
+  .screen { gap: 10px; padding: 10px 12px 14px; }
+  .pill { padding: 10px 16px; font-size: 17px; min-height: 50px; }
+  .icon-btn { width: 52px; height: 52px; font-size: 26px; }
+  .counter { padding: 6px 12px; font-size: 18px; }
+  .home-top { font-size: 18px; }
+
+  /* Home: no tile captions (he can't read them yet; grown-ups know them) */
+  .tile-text { display: none; }
+  .home.many .tile, .home.lots .tile { min-height: 116px; }
+  .home .tile { min-height: 140px; }
+
+  /* Play */
+  .card { min-height: 0; border-radius: 28px; padding: 12px; }
+  .pic, .card.has-meter .pic { font-size: min(32vw, 17vh); }
+  .card.has-pair .pic, .card.has-pair.has-meter .pic { font-size: min(26vw, 13vh); }
+  .coach { flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; }
+  .coach-pic { font-size: 44px; }
+  .coach-btns { width: 100%; }
+  .coach-btns .pill { flex: 1; }
+  .big-btn { min-height: 84px; font-size: 17px; }
+  .big-btn .ico { font-size: 36px; }
+  .kid-row { gap: 10px; }
+  .grown-row { gap: 8px; padding: 8px; }
+  .grown-row .label { display: none; }
+  .judge { min-height: 56px; font-size: 18px; padding: 0 12px; }
+  .judge.skip { font-size: 16px; padding: 0 6px; }
+}
+
+/* Phone, sideways: short screen, so the play screen goes side by side */
+@media (orientation: landscape) and (max-height: 500px) {
+  .screen { gap: 8px; padding: 8px 16px 10px; }
+  .pill { padding: 8px 14px; font-size: 16px; min-height: 44px; }
+  .icon-btn { width: 46px; height: 46px; font-size: 24px; }
+  .counter { padding: 4px 12px; font-size: 17px; }
+  .tile-text { display: none; }
+
+  /* Home: mascot and greeting on one line, tiles fill the rest */
+  .home.screen {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto 1fr auto;
+  }
+  .home .hello { grid-column: 1; grid-row: 1; flex-direction: row; justify-content: flex-start; gap: 12px; margin: 0; }
+  .home .home-top { grid-column: 2; grid-row: 1; align-self: center; }
+  .home .tiles, .home .empty-note, .home .home-bottom { grid-column: 1 / -1; }
+  .home .mascot, .home.many .mascot, .home.lots .mascot { font-size: 40px; }
+  .hello h1 { font-size: 26px; }
+  .hello p { font-size: 18px; }
+  .home .tiles, .home.many .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-auto-rows: 1fr;
+    align-content: stretch;
+    gap: 10px;
+  }
+  .home.lots .tiles { grid-template-columns: repeat(4, 1fr); }
+  .home .tile, .home.many .tile, .home.lots .tile { min-height: 0; max-width: none; padding: 6px; }
+  .home .tile-cue, .home.many .tile-cue { font-size: 34px; }
+  .home .tile-letter, .home.many .tile-letter { font-size: 32px; }
+  .home .tile-letter.long, .home.many .tile-letter.long { font-size: 22px; }
+
+  /* Play: big card on the left, everything else stacked on the right */
+  .play.screen {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    grid-template-rows: auto auto auto 1fr auto;
+    grid-template-areas:
+      "top   top"
+      "card  cue"
+      "card  coach"
+      "card  kid"
+      "card  grown";
+    column-gap: 12px;
+    row-gap: 8px;
+    max-width: none;
+  }
+  .play .topbar { grid-area: top; }
+  .play .cue { grid-area: cue; align-self: start; justify-self: start; font-size: 15px; padding: 4px 14px; }
+  .play .card { grid-area: card; min-height: 0; padding: 8px 12px; gap: 2px; border-radius: 24px; }
+  .play .coach { grid-area: coach; flex-wrap: wrap; gap: 6px 10px; padding: 6px 10px; }
+  .play .kid-row { grid-area: kid; gap: 8px; }
+  .play .grown-row { grid-area: grown; gap: 6px; padding: 6px; }
+  .dot { width: 16px; height: 16px; }
+  .stars { font-size: 18px; }
+
+  .pic, .card.has-pair .pic, .card.has-meter .pic, .card.has-pair.has-meter .pic { font-size: 22vh; }
+  .word { font-size: 10vh; }
+  .word.long { font-size: 7vh; }
+  .pair { font-size: 5vh; padding: 2px 12px; }
+  .msg { font-size: 15px; min-height: 1.2em; }
+  .meter { font-size: 18px; }
+  .meter-track { height: 14px; }
+  .mirror-video { height: 34vh; }
+
+  .coach-pic { font-size: 30px; }
+  .coach-text b { font-size: 15px; }
+  .coach-text span { font-size: 13px; }
+  .coach-btns { width: 100%; }
+  .coach-btns .pill { flex: 1; min-height: 38px; font-size: 14px; padding: 4px 8px; }
+
+  .big-btn { min-height: 0; height: 100%; font-size: 14px; padding: 4px; border-radius: 20px; }
+  .big-btn .ico { font-size: 28px; }
+  .grown-row .label { display: none; }
+  .judge { min-height: 46px; font-size: 16px; padding: 0 10px; border-radius: 18px; }
+  .judge.skip { font-size: 14px; padding: 0 4px; }
+
+  /* Reward and sticker book */
+  .reward { gap: 8px; }
+  .reward h1 { font-size: 28px; }
+  .gift { font-size: 90px; padding: 0 20px; }
+  .new-sticker { font-size: 90px; }
+  .reward .mascot { font-size: 48px; }
+  .reward .sub { font-size: 18px; }
+}
+
+/* Small phone, upright (iPhone SE and similar) */
+@media (max-width: 600px) and (max-height: 700px) {
+  .screen { gap: 8px; }
+  .big-btn { min-height: 70px; }
+  .big-btn .ico { font-size: 30px; }
+  .judge { min-height: 50px; }
+  .coach .pill { min-height: 42px; }
+}

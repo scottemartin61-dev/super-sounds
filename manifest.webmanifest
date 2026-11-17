@@ -1,7 +1,7 @@
 {
   "name": "Super Sounds",
   "short_name": "Super Sounds",
-  "description": "A gentle speech-practice game for R, CH and L sounds.",
+  "description": "A gentle speech-practice game for tricky sounds.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

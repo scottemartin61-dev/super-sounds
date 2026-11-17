@@ -3,6 +3,13 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v7 · 2026-11-17 · Phone version
+- Works on iPhones (and other phones) held upright or sideways. Every screen fits without scrolling,
+  except Grown-ups, which scrolls as before.
+- Held sideways, the game shows the picture on the left and the buttons on the right.
+- On phones the small captions under the sound tiles are hidden to save space.
+- iPad layout is unchanged.
+
 ## v6 · 2026-11-17 · Coaching when a sound is tricky
 - After a miss (🔁 **Again**), the game now steps down instead of just repeating:
   - **1st miss:** the word is said more slowly, and a "how to make it" card appears under the picture.

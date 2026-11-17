@@ -52,6 +52,9 @@ The app has to be online at an `https://` address. The microphone only works ove
 2. Tap the **Share** button (square with an arrow) → **Add to Home Screen** → **Add**.
 3. Open **Super Sounds** from the Home Screen. The first time he taps 🎤, tap **Allow** for the microphone.
 
+It works the same way on an **iPhone**: open the address in Safari → Share → Add to Home Screen. It works upright or sideways.
+Each device keeps its own stars, stickers, My words and recordings.
+
 Tips:
 - Turn on **Guided Access** to keep him in the app. Go to Settings → Accessibility → Guided Access, then triple-click the top button while the app is open.
 - If he can't hear the voice, check that the iPad's side **mute switch** is off and the volume is up.
