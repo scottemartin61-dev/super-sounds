@@ -3,6 +3,16 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v9 · 2026-11-17 · Real recorded sounds
+- 21 real recordings (free, public domain, from BigSoundBank.com; see [CREDITS.md](CREDITS.md)), each cut short and evened out in volume. 240 KB in total, kept offline.
+- **Stickers make their sound** when he finds one and when he taps it in his sticker book (a 🔊 marks which ones):
+  dog, cat, cow, duck, sheep, horse, rooster, owl, bird, frog, train, cars and buses, bike, fire truck and ambulance,
+  ship, plane, helicopter, rocket, toilet, camera, TV and radio.
+- The toilet theme now uses a **real flush** on ⭐ Great and a real whoosh for the present. It waits for the flush to finish before saying the next word.
+- New sticker: 🐑 sheep (Animals).
+- Grown-ups → Game settings: new **Real recorded sounds** switch, and a **Test the sound effects** list to hear each one.
+  "Gentle chimes" is now called **Sound effects** and turns everything off.
+
 ## v8 · 2026-11-17 · Toilets & gadgets theme
 - New sticker theme **🚽 Toilets & gadgets** (Grown-ups → Him → Sticker collection): 28 stickers like 🚽 🧻 🪠 📷 📺 🔊 🤖 🛸.
 - With this theme, ⭐ **Great!** plays a cartoon **flush** instead of the chime, and opening the present goes **whoosh**.

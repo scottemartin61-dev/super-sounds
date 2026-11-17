@@ -43,6 +43,7 @@
     useMyVoice: true,   // play a grown-up's recording instead of the iPad voice when there is one
     mixMine: true,      // mix "My words" into normal rounds
     handsFree: false,   // start listening by itself after the word is said
+    realSounds: true,   // recorded animal / vehicle / flush sounds
   };
   // How loud (RMS) counts as a "big voice" for each meter setting.
   const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
@@ -321,14 +322,59 @@
     src.stop(t + 0.6);
   }
 
+  // ---------- Recorded sound effects (sounds/*.mp3) ----------
+  const SFX = window.SFX || {};
+  const STICKER_SFX = window.STICKER_SFX || {};
+  const sfxBufs = new Map();    // name -> AudioBuffer (or a Promise while loading)
+  const realOn = () => S().sfx && S().realSounds;
+  const stickerSfx = (emoji) => STICKER_SFX[String(emoji).replace(/\uFE0F/g, "")] || null;
+
+  function loadSfx(name) {
+    if (!SFX[name]) return Promise.resolve(null);
+    const have = sfxBufs.get(name);
+    if (have) return Promise.resolve(have);
+    const ctx = audioCtx();
+    if (!ctx) return Promise.resolve(null);
+    const p = fetch(`sounds/${name}.mp3`)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+      .then((ab) => decodeAudio(ctx, ab))
+      .then((buf) => { sfxBufs.set(name, buf); return buf; })
+      .catch(() => { sfxBufs.delete(name); return null; });
+    sfxBufs.set(name, p);
+    return p;
+  }
+
+  // Plays a recorded sound (quietly). Returns false if it can't, so callers can fall back.
+  function playSfx(name, force = false) {
+    if (!name || !SFX[name] || (!force && !realOn())) return false;
+    const ctx = audioCtx();
+    if (!ctx) return false;
+    const go = (buf) => {
+      if (!buf || !(buf instanceof AudioBuffer)) return;
+      const src = ctx.createBufferSource(), g = ctx.createGain();
+      src.buffer = buf;
+      g.gain.value = 0.7;
+      src.connect(g).connect(ctx.destination);
+      src.start();
+    };
+    const have = sfxBufs.get(name);
+    if (have instanceof AudioBuffer) go(have); else loadSfx(name).then(go);
+    return true;
+  }
+
+  // Load them all in the background after the first tap (about 240 KB, and kept offline).
+  function preloadSfx() { Object.keys(SFX).forEach((n) => loadSfx(n)); }
+
   // The "well done" sound for the current sticker theme.
   function greatSound() {
-    if (theme().sfx === "flush") flush(); else chime("small");
+    if (theme().sfx === "flush") { if (!playSfx("flush")) flush(); }
+    else chime("small");
   }
 
   // iOS only allows sound after the first touch — unlock both on first tap.
   document.addEventListener("pointerdown", function unlock() {
     audioCtx();
+    setTimeout(preloadSfx, 300);
     if (canSpeak) {
       const u = new SpeechSynthesisUtterance(" ");
       u.volume = 0;
@@ -1142,7 +1188,7 @@
     card.appendChild(b);
     setMsg(["Great job!", "You did it!", "Super sound!", "Wow!", "Nice!"][Math.floor(Math.random() * 5)]);
     greatSound();
-    setTimeout(nextWord, 1100);
+    setTimeout(nextWord, theme().sfx === "flush" ? 1400 : 1100);   // let the flush finish first
   }
 
   function onAgain() {
@@ -1231,7 +1277,13 @@
     app.querySelector(".gift").classList.add("hidden");
     app.querySelector(".opened").classList.remove("hidden");
     app.querySelector(".actions").classList.remove("hidden");
-    if (theme().sfx === "flush") { whoosh(); setTimeout(() => chime("big"), 350); } else chime("big");
+    if (theme().sfx === "flush") {
+      if (!playSfx("whoosh")) whoosh();
+      setTimeout(() => chime("big"), 350);
+    } else chime("big");
+    // The new sticker makes its own sound (moo, choo-choo, click...).
+    const fx = reward && stickerSfx(reward.sticker);
+    if (fx) setTimeout(() => playSfx(fx), 900);
   }
 
   // ---------- Sticker book ----------
@@ -1239,7 +1291,9 @@
     const th = theme();
     const have = collected();
     const slots = th.stickers.map((x) => have.includes(x)
-      ? `<div class="slot">${x}</div>`
+      ? (stickerSfx(x) && realOn()
+        ? `<button class="slot sounds" data-act="sticker-sound" data-e="${x}" aria-label="Hear the ${x} sticker">${x}</button>`
+        : `<div class="slot">${x}</div>`)
       : `<div class="slot empty" aria-label="Not found yet">?</div>`).join("");
     app.innerHTML = `
       <div class="screen book">
@@ -1502,7 +1556,15 @@
             Hands-free: after the word is said, listen for him by itself (no need to tap My turn).
             It stops when he goes quiet, or after 6 seconds if he says nothing.</label>
           <label class="toggle"><input type="checkbox" data-set="sfx" ${st.sfx ? "checked" : ""}>
-            Gentle chimes</label>
+            Sound effects (chimes, flush, animal and vehicle sounds)</label>
+          <label class="toggle"><input type="checkbox" data-set="realSounds" ${st.realSounds ? "checked" : ""}>
+            Real recorded sounds: stickers moo, whistle and beep when he finds them or taps them in his book.
+            Turn off if any are too much for him.</label>
+          <details class="sfx-test"><summary>🔊 Test the sound effects</summary>
+            <p class="note">Tap to hear each one. These play even when the switches above are off.</p>
+            <div class="sfx-grid">${Object.entries(SFX).map(([k, label]) =>
+              `<button class="pill" data-act="sfx-test" data-k="${k}">${esc(label)}</button>`).join("")}</div>
+          </details>
           <label class="toggle"><input type="checkbox" data-set="voiceMeter" ${st.voiceMeter ? "checked" : ""}>
             Big-voice meter while recording (encourages talking out loud instead of whispering)</label>
           <div class="field">How loud counts as a big voice
@@ -1539,7 +1601,7 @@
       case "theme": st.theme = el.value; break;
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
-      case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree":
+      case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree": case "realSounds":
         st[key] = el.checked; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
       case "sound-on": st.sounds[el.dataset.sound].on = el.checked; break;
@@ -1567,6 +1629,13 @@
     open: openGift,
     "again-round": () => startRound(round.sound),
     "test-voice": () => say("Hi! Let's practise. Boat. Lion. Fish."),
+    "sfx-test": (b) => playSfx(b.dataset.k, true),
+    "sticker-sound": (b) => {
+      playSfx(stickerSfx(b.dataset.e));
+      b.classList.remove("wiggle");
+      void b.offsetWidth;
+      b.classList.add("wiggle");
+    },
     "reset-progress": () => {
       if (confirm("Reset all progress and stars? Stickers are kept.")) {
         data.stats = {}; data.days = {}; data.stars = 0; save(); render(); toast("Progress reset.");

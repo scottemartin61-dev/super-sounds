@@ -628,11 +628,31 @@ function emojiList(s) {
 }
 
 // Sticker collections — pick one in the Grown-ups area.
+// Real recorded sounds (in the sounds/ folder, CC0 from BigSoundBank.com).
+// label is shown in Grown-ups → Sound effects.
+window.SFX = {
+  flush: "🚽 Flush", whoosh: "💨 Whoosh", camera: "📷 Camera", static: "📺 TV static",
+  dog: "🐶 Dog", cat: "🐱 Cat", cow: "🐮 Cow", duck: "🦆 Duck", sheep: "🐑 Sheep", horse: "🐴 Horse",
+  rooster: "🐔 Rooster", owl: "🦉 Owl", bird: "🐦 Bird", frog: "🐸 Frog",
+  train: "🚂 Train", carhorn: "🚗 Car horn", bikebell: "🚲 Bike bell", siren: "🚒 Siren",
+  ship: "🚢 Ship", plane: "✈️ Plane", helicopter: "🚁 Helicopter",
+};
+
+// Which stickers make a sound when found or tapped in the sticker book.
+window.STICKER_SFX = {
+  "🐶": "dog", "🐱": "cat", "🐮": "cow", "🦆": "duck", "🐑": "sheep", "🐴": "horse", "🦄": "horse",
+  "🐔": "rooster", "🦉": "owl", "🐦": "bird", "🐧": "bird", "🐸": "frog",
+  "🚂": "train", "🚗": "carhorn", "🚙": "carhorn", "🚕": "carhorn", "🛻": "carhorn", "🚌": "carhorn",
+  "🚎": "carhorn", "🚐": "carhorn", "🚲": "bikebell", "🛴": "bikebell", "🚒": "siren", "🚑": "siren", "🚓": "siren",
+  "🚢": "ship", "🚤": "ship", "✈": "plane", "🛩": "plane", "🚁": "helicopter", "🚀": "whoosh", "🛸": "whoosh",
+  "🚽": "flush", "📷": "camera", "📸": "camera", "📺": "static", "📻": "static",
+};
+
 window.THEMES = {
   animals: {
     name: "Animals",
     mascot: "🐶",
-    stickers: emojiList("🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯🦁🐮🐷🐸🐵🐔🐧🐦🦆🦉🐴🦄🐝🐞🦋🐢🐙🦀🐠🐬🐳🦒🦓🐘🦛🦘🦥🦦🦔🦩"),
+    stickers: emojiList("🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯🦁🐮🐷🐑🐸🐵🐔🐧🐦🦆🦉🐴🦄🐝🐞🦋🐢🐙🦀🐠🐬🐳🦒🦓🐘🦛🦘🦥🦦🦔🦩"),
   },
   dinos: {
     name: "Dinosaurs",

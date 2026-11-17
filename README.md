@@ -45,6 +45,11 @@ After that, he hears your voice for that word instead of the iPad voice. Silence
 Words you haven't recorded still use the iPad voice. Recordings are saved on the iPad only.
 Deleting the app from the Home Screen erases them, along with My words photos.
 
+### Sound effects
+Stickers like 🐮 🚂 📷 make a real recorded sound when he finds them, and again when he taps them in the sticker book.
+The toilet theme flushes on ⭐ Great. You can switch these off in Grown-ups → Game settings, and test each one there first.
+The sounds are free public-domain recordings from BigSoundBank.com ([CREDITS.md](CREDITS.md)).
+
 ## Putting it on his iPad
 The app has to be online at an `https://` address. The microphone only works over https.
 

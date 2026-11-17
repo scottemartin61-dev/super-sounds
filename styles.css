@@ -458,6 +458,14 @@ button:focus-visible { outline: 4px solid #6aa9ff; outline-offset: 3px; }
   justify-content: center;
   font-size: clamp(48px, 9vmin, 76px);
 }
+button.slot { padding: 0; border-radius: 22px; }
+.slot.sounds { position: relative; }
+.slot.sounds::after { content: "🔊"; position: absolute; right: 6px; bottom: 4px; font-size: 14px; opacity: 0.55; }
+.slot.wiggle { animation: wiggle-once 0.5s ease; }
+@keyframes wiggle-once { 0%, 100% { transform: rotate(0) scale(1); } 30% { transform: rotate(-8deg) scale(1.08); } 60% { transform: rotate(8deg) scale(1.08); } }
+.sfx-test summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+.sfx-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.sfx-grid .pill { min-height: 44px; padding: 6px 14px; font-size: 16px; }
 .slot.empty { background: #f3eee6; box-shadow: none; color: #cfc6b8; font-size: 36px; font-weight: 800; }
 
 /* ---------------- Grown-ups ---------------- */

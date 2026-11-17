@@ -1,6 +1,6 @@
 // Offline support: serve the saved copy instantly, refresh it in the background.
 // Bump VERSION when you change files so iPads pick up the update.
-const VERSION = "super-sounds-v8";
+const VERSION = "super-sounds-v9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +11,27 @@ const ASSETS = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/apple-touch-icon.png",
+  "./sounds/flush.mp3",
+  "./sounds/whoosh.mp3",
+  "./sounds/camera.mp3",
+  "./sounds/static.mp3",
+  "./sounds/dog.mp3",
+  "./sounds/cat.mp3",
+  "./sounds/cow.mp3",
+  "./sounds/duck.mp3",
+  "./sounds/sheep.mp3",
+  "./sounds/horse.mp3",
+  "./sounds/rooster.mp3",
+  "./sounds/owl.mp3",
+  "./sounds/bird.mp3",
+  "./sounds/frog.mp3",
+  "./sounds/train.mp3",
+  "./sounds/carhorn.mp3",
+  "./sounds/bikebell.mp3",
+  "./sounds/siren.mp3",
+  "./sounds/ship.mp3",
+  "./sounds/plane.mp3",
+  "./sounds/helicopter.mp3",
 ];
 
 self.addEventListener("install", (e) => {
