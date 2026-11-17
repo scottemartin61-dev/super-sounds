@@ -21,6 +21,9 @@
 
   const MAX_TRIES = 3;          // after this many "Again" taps, move on gently
   const RECORD_SECONDS = 4;     // recording stops by itself after this
+  const LISTEN_SECONDS = 6;     // hands-free: stop listening if he says nothing
+  const QUIET_MS = 1000;        // hands-free: stop once he's been quiet this long
+  const VOICE_START = 0.022;    // hands-free: how loud (RMS) counts as him starting to talk
   const HOLD_MS = 2000;         // hold time for the Grown-ups button
 
   // =================================================================
@@ -39,6 +42,7 @@
     voiceLevel: "medium",
     useMyVoice: true,   // play a grown-up's recording instead of the iPad voice when there is one
     mixMine: true,      // mix "My words" into normal rounds
+    handsFree: false,   // start listening by itself after the word is said
   };
   // How loud (RMS) counts as a "big voice" for each meter setting.
   const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
@@ -425,17 +429,26 @@
   // =================================================================
   //  Recording (kept in memory only, thrown away after each word)
   // =================================================================
-  const rec = { mr: null, stream: null, chunks: [], url: null, timer: null, state: "idle", token: 0 };
+  // state: idle | starting | listening (hands-free, waiting for him) | recording | done
+  const rec = { mr: null, stream: null, chunks: [], url: null, clip: null, timer: null, state: "idle", token: 0,
+    hands: false, heard: false, manual: false, vad: 0 };
+  const handsFreeOn = () => S().mic && S().handsFree && canRecord();
   const player = new Audio();
   player.setAttribute("playsinline", "");
 
   const canRecord = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 
-  async function startRecording() {
+  // hands = true: hands-free. Listen first, keep the word once he starts talking,
+  // and stop by itself when he goes quiet.
+  async function startRecording(hands = false) {
     if (!canRecord()) { toast("Recording isn't available on this device."); return; }
+    if (!hands && round) round.sayTok++;   // a tap cancels any hands-free listen that's about to start
     stopSpeaking();
     player.pause();
     const token = ++rec.token;
+    rec.hands = hands;
+    rec.heard = !hands;
+    rec.manual = !hands;
     rec.state = "starting";
     updateKidRow();
     let stream;
@@ -465,24 +478,127 @@
     }
     rec.mr.ondataavailable = (e) => { if (e.data && e.data.size) rec.chunks.push(e.data); };
     rec.mr.onstop = () => {
+      stopVad();
       const peak = stopMeter();
       stopStream();
       if (token !== rec.token) return;
+      if (hands && !rec.heard) {
+        // He didn't say anything: stop quietly, no "wrong" sound.
+        rec.state = rec.url ? "done" : "idle";
+        updateKidRow();
+        const m = app.querySelector(".meter");
+        if (m) m.classList.add("hidden");
+        setMsg("Tap 🎤 when you're ready");
+        return;
+      }
       if (meterOn() && peak !== null) {
         setMsg(peak >= voiceThreshold() ? "Big voice! 📣" : "Try your BIG voice! 📣");
       }
       if (rec.url) URL.revokeObjectURL(rec.url);
       const blob = new Blob(rec.chunks, { type: (rec.mr && rec.mr.mimeType) || type || "audio/mp4" });
       rec.url = blob.size ? URL.createObjectURL(blob) : null;
+      rec.clip = null;
       rec.state = rec.url ? "done" : "idle";
       updateKidRow();
-      if (rec.url) playBack();
+      if (!rec.url) return;
+      // Trim the silence before he spoke so "Hear me" starts right at his word.
+      const ctx = audioCtx();
+      if (!ctx || !blob.arrayBuffer) { playBack(); return; }
+      blob.arrayBuffer()
+        .then((ab) => decodeAudio(ctx, ab))
+        .then((b) => { if (token === rec.token) rec.clip = tidyClip(ctx, b); })
+        .catch(() => {})
+        .then(() => { if (token === rec.token && rec.url) playBack(); });
     };
     rec.mr.start();
-    rec.state = "recording";
+    rec.state = hands ? "listening" : "recording";
     updateKidRow();
     startMeter(stream);
+    if (hands) {
+      if (!watchVoice(stream, token)) { rec.heard = true; rec.manual = true; rec.state = "recording"; updateKidRow(); }
+      rec.timer = setTimeout(stopRecording, (rec.manual ? RECORD_SECONDS : LISTEN_SECONDS + RECORD_SECONDS) * 1000);
+    } else {
+      rec.timer = setTimeout(stopRecording, RECORD_SECONDS * 1000);
+    }
+  }
+
+  // Hands-free: tapping My turn while it's listening means "I'm talking now".
+  function switchToManual() {
+    rec.heard = true;
+    rec.manual = true;
+    rec.state = "recording";
+    clearTimeout(rec.timer);
     rec.timer = setTimeout(stopRecording, RECORD_SECONDS * 1000);
+    setMsg("");
+    updateKidRow();
+  }
+
+  // Hands-free: notice when he starts talking and when he stops.
+  // The first quarter-second sets the room's noise level so a noisy room doesn't trigger it.
+  function watchVoice(stream, token) {
+    const ctx = audioCtx();
+    if (!ctx) return false;
+    let src, an;
+    try {
+      src = ctx.createMediaStreamSource(stream);
+      an = ctx.createAnalyser();
+      an.fftSize = 1024;
+      src.connect(an);
+    } catch (e) { return false; }
+    const buf = new Float32Array(an.fftSize);
+    const t0 = performance.now();
+    let noise = 0, loud = 0, th = VOICE_START, quietSince = 0;
+    stopVad();
+    rec.vadSrc = src;
+    rec.vad = setInterval(() => {
+      if (token !== rec.token || !rec.mr || rec.mr.state !== "recording") { stopVad(); return; }
+      an.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const rms = Math.sqrt(sum / buf.length);
+      const now = performance.now();
+      if (rec.manual) return;                       // grown-up/kid took over with a tap
+      if (!rec.heard) {
+        if (now - t0 < 250) { noise = Math.max(noise, rms); return; }
+        th = Math.max(VOICE_START, Math.min(noise * 2.5, voiceThreshold()));
+        loud = rms >= th ? loud + 1 : 0;
+        if (loud >= 2) {
+          rec.heard = true;
+          rec.state = "recording";
+          clearTimeout(rec.timer);
+          rec.timer = setTimeout(stopRecording, RECORD_SECONDS * 1000);
+          setMsg("");
+          updateKidRow();
+        } else if (now - t0 > LISTEN_SECONDS * 1000) {
+          stopRecording();
+        }
+      } else if (rms >= th * 0.5) {
+        quietSince = 0;
+      } else if (!quietSince) {
+        quietSince = now;
+      } else if (now - quietSince > QUIET_MS) {
+        stopRecording();
+      }
+    }, 40);
+    return true;
+  }
+
+  function stopVad() {
+    clearInterval(rec.vad);
+    rec.vad = 0;
+    try { if (rec.vadSrc) rec.vadSrc.disconnect(); } catch (e) {}
+    rec.vadSrc = null;
+  }
+
+  // Hands-free: after the word has been said, start listening for him.
+  function maybeListen() {
+    if (!handsFreeOn() || screen !== "play" || !round || round.busy) return;
+    const tok = round.sayTok;
+    setTimeout(() => {   // short pause so the mic doesn't hear the iPad's own voice
+      if (screen !== "play" || !round || round.busy || tok !== round.sayTok) return;
+      if (rec.state !== "idle" && rec.state !== "done") return;
+      startRecording(true);
+    }, 300);
   }
 
   function stopRecording() {
@@ -498,6 +614,8 @@
   function resetRecording() {
     rec.token++;
     clearTimeout(rec.timer);
+    stopVad();
+    rec.clip = null;
     if (rec.mr && rec.mr.state === "recording") { try { rec.mr.stop(); } catch (e) {} }
     rec.mr = null;
     stopMeter();
@@ -561,11 +679,14 @@
   function playBack() {
     if (!rec.url) return;
     stopSpeaking();
-    player.src = rec.url;
+    player.pause();
     const hear = app.querySelector('[data-act="hear"]');
+    const off = () => hear && hear.classList.remove("active");
     hear && hear.classList.add("active");
-    player.onended = player.onpause = () => hear && hear.classList.remove("active");
-    player.play().catch(() => hear && hear.classList.remove("active"));
+    if (rec.clip && audioCtx()) { playVoiceBuffer(rec.clip, off); return; }
+    player.src = rec.url;
+    player.onended = player.onpause = off;
+    player.play().catch(off);
   }
 
   // =================================================================
@@ -763,7 +884,7 @@
     const level = S().sounds[sound].level;
     const items = pickWords(sound, level, S().perRound);
     if (!items.length) { toast("No words for this level yet."); return; }
-    round = { sound, level, items, idx: 0, tries: 0, greats: 0, busy: false };
+    round = { sound, level, items, idx: 0, tries: 0, greats: 0, busy: false, sayTok: 0 };
     show("play");
     if (S().autoSay) sayCurrent(); // called inside the tap so iOS allows it
   }
@@ -776,7 +897,11 @@
     btn && btn.classList.add("active");
     const parts = item.pair ? [{ text: item.pair }] : [];
     parts.push({ text: item.w, say: item.say });
-    speak(parts, () => btn && btn.classList.remove("active"));
+    const tok = ++round.sayTok;
+    speak(parts, () => {
+      btn && btn.classList.remove("active");
+      if (round && tok === round.sayTok) maybeListen();
+    });
   }
 
   // ---------- Play ----------
@@ -828,9 +953,10 @@
     if (!recBtn) return;
     const lbl = recBtn.querySelector(".lbl");
     recBtn.classList.toggle("rec", rec.state === "recording");
+    recBtn.classList.toggle("listening", rec.state === "listening");
     recBtn.disabled = rec.state === "starting";
-    lbl.textContent = rec.state === "recording" ? "Stop" : "My turn";
-    hear.disabled = !rec.url || rec.state === "recording";
+    lbl.textContent = rec.state === "recording" ? "Stop" : rec.state === "listening" ? "Listening…" : "My turn";
+    hear.disabled = !rec.url || rec.state === "recording" || rec.state === "listening";
   }
 
   function setMsg(text) {
@@ -854,6 +980,7 @@
     if (round.busy) return;
     round.busy = true;
     setJudgeDisabled(true);
+    if (rec.state === "listening") { resetRecording(); updateKidRow(); }
     record(currentItem(), true);
     round.greats++;
     data.stars++;
@@ -890,6 +1017,7 @@
   function onSkip() {
     if (round.busy) return;
     round.busy = true;
+    if (rec.state === "listening") { resetRecording(); updateKidRow(); }
     nextWord();
   }
 
@@ -1212,6 +1340,9 @@
             Say each word out loud when it appears</label>
           <label class="toggle"><input type="checkbox" data-set="mic" ${st.mic ? "checked" : ""}>
             Use the microphone (My turn / Hear me)</label>
+          <label class="toggle"><input type="checkbox" data-set="handsFree" ${st.handsFree ? "checked" : ""}>
+            Hands-free: after the word is said, listen for him by itself (no need to tap My turn).
+            It stops when he goes quiet, or after 6 seconds if he says nothing.</label>
           <label class="toggle"><input type="checkbox" data-set="sfx" ${st.sfx ? "checked" : ""}>
             Gentle chimes</label>
           <label class="toggle"><input type="checkbox" data-set="voiceMeter" ${st.voiceMeter ? "checked" : ""}>
@@ -1250,7 +1381,7 @@
       case "theme": st.theme = el.value; break;
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
-      case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine":
+      case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree":
         st[key] = el.checked; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
       case "sound-on": st.sounds[el.dataset.sound].on = el.checked; break;
@@ -1267,7 +1398,8 @@
     home: () => show("home"),
     book: () => show("book"),
     listen: () => { player.pause(); sayCurrent(); },
-    record: () => (rec.state === "recording" ? stopRecording() : startRecording()),
+    record: () => (rec.state === "recording" ? stopRecording()
+      : rec.state === "listening" ? switchToManual() : startRecording()),
     hear: () => playBack(),
     great: onGreat,
     again: onAgain,
@@ -1354,7 +1486,8 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       stopSpeaking();
-      if (rec.state === "recording") stopRecording();
+      if (rec.state === "listening") { resetRecording(); updateKidRow(); }
+      else if (rec.state === "recording") stopRecording();
       stopGrownRecord();
     }
   });

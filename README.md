@@ -18,6 +18,7 @@ Off by default (turn on in Grown-ups): 👅 **TH**, 🐍 **S-blends**.
 ## How a round works
 1. He taps a sound. The iPad says each word slowly. Tap 🔊 to hear it again.
 2. He taps 🎤 **My turn** and says the word. A **big-voice meter** fills up as he talks, to encourage speaking out loud rather than whispering. 👂 **Hear me** plays his voice back.
+   With **Hands-free** on (Grown-ups → Game settings), he doesn't need to tap: after the word is said, the app listens by itself (the button shows "Listening…"), keeps his word once he starts talking, and stops when he goes quiet. If he says nothing for 6 seconds it stops quietly. Background noise or a grown-up talking can also set it off.
 3. A grown-up taps ⭐ **Great!** or 🔁 **Again**. After 3 tries the game moves on by itself.
 4. After 5 words he opens a 🎁 and gets a new sticker for his book, every time.
 

@@ -349,6 +349,7 @@ button:focus-visible { outline: 4px solid #6aa9ff; outline-offset: 3px; }
 .big-btn .ico { font-size: clamp(40px, 7vmin, 60px); line-height: 1.1; }
 .big-btn.active { background: var(--c); }
 .big-btn.rec { background: #ffd0d0; animation: pulse 1.4s ease-in-out infinite; }
+.big-btn.listening { background: #d6ecff; animation: pulse 1.8s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
 
 .grown-row {
