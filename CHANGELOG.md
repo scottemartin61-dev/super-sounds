@@ -3,6 +3,10 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v10 · 2026-11-17 · SH is "the quiet sound"
+- SH now uses 🤫 **"Quiet sound: shhh!"** instead of 🌊 ocean waves, matching the finger-to-lips cue speech therapists commonly use.
+  This changes the home tile, the "Just the sound" pictures, the coaching card hint and the grown-up tip.
+
 ## v9 · 2026-11-17 · Real recorded sounds
 - 21 real recordings (free, public domain, from BigSoundBank.com; see [CREDITS.md](CREDITS.md)), each cut short and evened out in volume. 240 KB in total, kept offline.
 - **Stickers make their sound** when he finds one and when he taps it in his sticker book (a 🔊 marks which ones):

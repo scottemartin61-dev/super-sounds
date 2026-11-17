@@ -185,26 +185,26 @@ window.SOUNDS = {
   // ------------------------------------------------------------------
   SH: {
     label: "SH",
-    cue: "🌊",
-    cueText: "Ocean waves: shhh!",
+    cue: "🤫",
+    cueText: "Quiet sound: shhh!",
     color: "#c5e3a8",
     dark: "#4f7a28",
     highlight: /sh/gi,
     on: true,
     level: "start",
     tip:
-      "Lips push forward into a little circle (like a kiss), teeth close together, and blow: \"shhh\" like ocean waves. " +
+      "Lips push forward into a little circle (like a kiss), teeth close together, and blow: \"shhh\", the quiet sound (finger to the lips). " +
       "If it sounds like \"s\", push the lips further forward and pull the tongue back a little. " +
       "Practise the long \"shhh\" first, then add a vowel: \"shhh-oe\" → \"shoe\".",
-    coach: { pic: "💋", how: "Lips push out like a kiss", hint: "Blow like the waves: shhh 🌊", model: "shhh" },
+    coach: { pic: "💋", how: "Lips push out like a kiss", hint: "Finger on your lips, the quiet sound: shhh 🤫", model: "shhh" },
     levels: [
       lvl("syllables", "Just the sound", "sha, shoe, shee", [
-        { w: "shhh", p: "🌊" },
-        { w: "sha", say: "shah", p: "🌊" },
-        { w: "shee", p: "🌊" },
-        { w: "sho", say: "show", p: "🌊" },
-        { w: "shoo", p: "🌊" },
-        { w: "shay", p: "🌊" },
+        { w: "shhh", p: "🤫" },
+        { w: "sha", say: "shah", p: "🤫" },
+        { w: "shee", p: "🤫" },
+        { w: "sho", say: "show", p: "🤫" },
+        { w: "shoo", p: "🤫" },
+        { w: "shay", p: "🤫" },
       ]),
       lvl("start", "Start of words", "ship, shoe", [
         { w: "ship", p: "🚢" },

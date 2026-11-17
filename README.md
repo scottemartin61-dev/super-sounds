@@ -7,7 +7,7 @@ It's a web app that installs on an iPad's Home Screen and then works like a norm
 On by default:
 - 🐕 **Endings**: saying the last sound of words ("watch" not "wa"). Includes word pairs like toe → toad.
 - 🎵 **L**, including L-blends (blue, clock, flag)
-- 🌊 **SH**
+- 🤫 **SH**
 - 🏎️ **V**
 - 🐸 **G**, including "K or G?" pairs (coat → goat)
 - 🐯 **R**
