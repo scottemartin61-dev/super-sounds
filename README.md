@@ -29,6 +29,18 @@ The **Grown-ups** button on the home screen only opens if you press and hold it 
 
 It also has coaching tips for each sound and his progress (tries, % great, tricky words, days practised).
 
+### My words
+Add words from his own life (family names, pets, toys, foods) with an emoji or a photo.
+Each word belongs to one sound. Those words are mixed into his rounds (about 1 in 3), and that sound also gets a **⭐ My words** level.
+They're saved on the iPad only, never in this repo, so personal names stay private.
+Add them inside the Home Screen app: Safari and the Home Screen app keep separate lists.
+
+### Grown-up voice
+Pick a sound and level, then tap 🎙️ **Record** next to each word and say it (tap ⏹ to stop).
+After that, he hears your voice for that word instead of the iPad voice. Silence before and after is trimmed, and the volume is evened out.
+Words you haven't recorded still use the iPad voice. Recordings are saved on the iPad only.
+Deleting the app from the Home Screen erases them, along with My words photos.
+
 ## Putting it on his iPad
 The app has to be online at an `https://` address. The microphone only works over https.
 
@@ -53,5 +65,6 @@ python -m http.server 8080
 Then open http://localhost:8080.
 
 ## Privacy
-There are no accounts, ads or tracking. Recordings are kept in memory only and deleted when he moves to the next word.
-Everything else (settings, stars, stickers, progress) stays in the iPad's local storage.
+There are no accounts, ads or tracking. His recordings are kept in memory only and deleted when he moves to the next word.
+Grown-up recordings, My words and their photos are saved on the iPad until you delete them.
+Everything else (settings, stars, stickers, progress) stays in the iPad's local storage too.

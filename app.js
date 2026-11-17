@@ -4,8 +4,18 @@
 
   const SOUNDS = window.SOUNDS;
   const THEMES = window.THEMES;
-  const levelsOf = (k) => SOUNDS[k].levels;
+  // "My words" (added by a grown-up, kept on this iPad only) show up as an extra
+  // level on any sound that has some.
+  const MY_LEVEL = "my";
+  const myItemsFor = (k) => data.myWords.filter((x) => x.sound === k);
+  const levelsOf = (k) => {
+    const mine = myItemsFor(k);
+    return mine.length
+      ? SOUNDS[k].levels.concat([{ id: MY_LEVEL, name: "⭐ My words", hint: "words from his own life", items: mine }])
+      : SOUNDS[k].levels;
+  };
   const findLevel = (k, id) => levelsOf(k).find((l) => l.id === id);
+  const defaultLevel = (k) => (SOUNDS[k].levels.some((l) => l.id === SOUNDS[k].level) ? SOUNDS[k].level : SOUNDS[k].levels[0].id);
   const app = document.getElementById("app");
   const toastEl = document.getElementById("toast");
 
@@ -27,6 +37,8 @@
     sfx: true,
     voiceMeter: true,
     voiceLevel: "medium",
+    useMyVoice: true,   // play a grown-up's recording instead of the iPad voice when there is one
+    mixMine: true,      // mix "My words" into normal rounds
   };
   // How loud (RMS) counts as a "big voice" for each meter setting.
   const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
@@ -36,13 +48,16 @@
     try { d = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { d = {}; }
     const s = d.settings || {};
     d.settings = Object.assign({}, DEFAULT_SETTINGS, s);
+    d.myWords = (Array.isArray(d.myWords) ? d.myWords : [])
+      .filter((x) => x && typeof x.w === "string" && x.w && SOUNDS[x.sound])
+      .map((x) => Object.assign(x, { mine: true }));
     d.settings.sounds = {};
     for (const k of Object.keys(SOUNDS)) {
       const saved = (s.sounds || {})[k] || {};
-      const def = SOUNDS[k];
-      const level = findLevel(k, saved.level) ? saved.level
-        : findLevel(k, def.level) ? def.level : levelsOf(k)[0].id;
-      d.settings.sounds[k] = { on: typeof saved.on === "boolean" ? saved.on : !!def.on, level };
+      const okLevel = SOUNDS[k].levels.some((l) => l.id === saved.level) ||
+        (saved.level === MY_LEVEL && d.myWords.some((x) => x.sound === k));
+      const level = okLevel ? saved.level : defaultLevel(k);
+      d.settings.sounds[k] = { on: typeof saved.on === "boolean" ? saved.on : !!SOUNDS[k].on, level };
     }
     if (!VOICE_THRESHOLDS[d.settings.voiceLevel]) d.settings.voiceLevel = "medium";
     if (!THEMES[d.settings.theme]) d.settings.theme = "animals";
@@ -58,6 +73,44 @@
 
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* private mode etc. */ }
+  }
+
+  // ---------- Bigger things (grown-up recordings, photos) live in IndexedDB on this device ----------
+  let dbPromise = null;
+  function db() {
+    if (!dbPromise) {
+      dbPromise = new Promise((resolve, reject) => {
+        if (!window.indexedDB) { reject(new Error("No storage")); return; }
+        const req = indexedDB.open("superSounds", 1);
+        req.onupgradeneeded = () => {
+          const d = req.result;
+          if (!d.objectStoreNames.contains("audio")) d.createObjectStore("audio");
+          if (!d.objectStoreNames.contains("photos")) d.createObjectStore("photos");
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      dbPromise.catch(() => { dbPromise = null; });
+    }
+    return dbPromise;
+  }
+  function idb(store, mode, fn) {
+    return db().then((d) => new Promise((resolve, reject) => {
+      const tx = d.transaction(store, mode);
+      const req = fn(tx.objectStore(store));
+      tx.oncomplete = () => resolve(req ? req.result : undefined);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+    }));
+  }
+  const idbGet = (store, key) => idb(store, "readonly", (s) => s.get(key));
+  const idbPut = (store, key, val) => idb(store, "readwrite", (s) => s.put(val, key));
+  const idbDel = (store, key) => idb(store, "readwrite", (s) => s.delete(key));
+  const idbKeys = (store) => idb(store, "readonly", (s) => s.getAllKeys());
+  const idbClear = (store) => idb(store, "readwrite", (s) => s.clear());
+
+  // Ask the browser not to clear our saved recordings and photos when space is low.
+  function persistStorage() {
+    try { navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {}); } catch (e) {}
   }
 
   // =================================================================
@@ -155,7 +208,14 @@
     speechSynthesis.speak(u);
   }
 
-  function stopSpeaking() { if (canSpeak) speechSynthesis.cancel(); }
+  function stopSpeaking() {
+    voices.token++;
+    if (voices.src) {
+      try { voices.src.onended = null; voices.src.stop(); } catch (e) {}
+      voices.src = null;
+    }
+    if (canSpeak) speechSynthesis.cancel();
+  }
 
   // =================================================================
   //  Gentle sound effects (generated, no files)
@@ -200,6 +260,167 @@
     }
     document.removeEventListener("pointerdown", unlock);
   });
+
+  // =================================================================
+  //  Grown-up voice: recordings of a familiar grown-up saying the words.
+  //  Saved on this device only. Played instead of the iPad voice when there is one.
+  // =================================================================
+  const voices = { keys: new Set(), buffers: new Map(), src: null, token: 0 };
+  // The same word shares one recording everywhere it appears ("toe" in two levels, etc).
+  const voiceKey = (text) => String(text).toLowerCase()
+    .replace(/[^\p{L}\p{N}' ]+/gu, " ").replace(/\s+/g, " ").trim();
+  const hasVoice = (text) => voices.keys.has(voiceKey(text));
+
+  idbKeys("audio").then((keys) => {
+    keys.forEach((k) => voices.keys.add(k));
+    refreshVoiceBox();
+  }).catch(() => {});
+
+  function decodeAudio(ctx, arrayBuffer) {
+    return new Promise((resolve, reject) => ctx.decodeAudioData(arrayBuffer, resolve, reject));
+  }
+
+  // Cut the silence before and after the word, and even out the loudness.
+  // Keeps a generous tail so final sounds ("toaD") aren't clipped.
+  function tidyClip(ctx, buf) {
+    const ch = buf.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < ch.length; i++) { const a = Math.abs(ch[i]); if (a > peak) peak = a; }
+    if (peak < 0.002) return buf;
+    const th = Math.max(0.008, peak * 0.05);
+    let s = 0;
+    while (s < ch.length && Math.abs(ch[s]) < th) s++;
+    let e = ch.length - 1;
+    while (e > s && Math.abs(ch[e]) < th) e--;
+    s = Math.max(0, s - Math.floor(buf.sampleRate * 0.12));
+    e = Math.min(ch.length, e + Math.floor(buf.sampleRate * 0.3));
+    const len = Math.max(1, e - s);
+    const gain = Math.min(6, 0.85 / peak);
+    const out = ctx.createBuffer(1, len, buf.sampleRate);
+    const o = out.getChannelData(0);
+    for (let i = 0; i < len; i++) o[i] = ch[s + i] * gain;
+    return out;
+  }
+
+  async function loadVoice(key) {
+    if (voices.buffers.has(key)) return voices.buffers.get(key);
+    const saved = await idbGet("audio", key);
+    const ctx = audioCtx();
+    if (!saved || !ctx) return null;
+    const buf = tidyClip(ctx, await decodeAudio(ctx, saved.buf.slice(0)));
+    voices.buffers.set(key, buf);
+    return buf;
+  }
+
+  function playVoiceBuffer(buf, onEnd) {
+    const ctx = audioCtx();
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.onended = () => { if (voices.src === src) voices.src = null; onEnd && onEnd(); };
+    voices.src = src;
+    src.start();
+  }
+
+  // Say a list of parts ([{text, say}]) one after another, using a grown-up
+  // recording for any part that has one and the iPad voice for the rest.
+  function speak(parts, onEnd) {
+    const useRec = S().useMyVoice && parts.some((p) => hasVoice(p.text));
+    if (!useRec) {
+      say(parts.map((p) => p.say || p.text).join(" ... "), onEnd);
+      return;
+    }
+    stopSpeaking();
+    const token = voices.token;
+    const next = (i) => {
+      if (token !== voices.token) return;
+      if (i >= parts.length) { onEnd && onEnd(); return; }
+      const p = parts[i];
+      const done = () => setTimeout(() => next(i + 1), i < parts.length - 1 ? 500 : 0);
+      const tts = () => { if (token === voices.token) say(p.say || p.text, done); };
+      if (!hasVoice(p.text)) { tts(); return; }
+      loadVoice(voiceKey(p.text))
+        .then((buf) => { if (token !== voices.token) return; buf ? playVoiceBuffer(buf, done) : tts(); })
+        .catch(tts);
+    };
+    next(0);
+  }
+
+  // ---------- Recording a grown-up (from the Grown-ups area) ----------
+  const GROWN_RECORD_SECONDS = 8;
+  const gRec = { key: null, mr: null, stream: null, chunks: [], timer: null };
+  const pickAudioType = () => ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(
+    (t) => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+
+  async function startGrownRecord(key) {
+    if (!canRecord()) { toast("Recording isn't available on this device."); return; }
+    stopSpeaking();
+    gRec.key = key;
+    refreshVoiceList();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch (e) {
+      gRec.key = null;
+      refreshVoiceList();
+      toast("The microphone is blocked. Allow it in the iPad's Settings → Safari → Microphone.", 5000);
+      return;
+    }
+    if (gRec.key !== key || screen !== "grown") { stream.getTracks().forEach((t) => t.stop()); return; }
+    const type = pickAudioType();
+    let mr;
+    try { mr = new MediaRecorder(stream, type ? { mimeType: type } : undefined); } catch (e) {
+      stream.getTracks().forEach((t) => t.stop());
+      gRec.key = null;
+      refreshVoiceList();
+      toast("Recording isn't available on this device.");
+      return;
+    }
+    gRec.stream = stream;
+    gRec.mr = mr;
+    gRec.chunks = [];
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) gRec.chunks.push(e.data); };
+    mr.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(gRec.chunks, { type: mr.mimeType || type || "audio/mp4" });
+      const k = gRec.key;
+      gRec.mr = gRec.stream = gRec.key = null;
+      refreshVoiceList();
+      if (!k || !blob.size) return;
+      try {
+        await idbPut("audio", k, { type: blob.type, buf: await blob.arrayBuffer(), t: Date.now() });
+        voices.keys.add(k);
+        voices.buffers.delete(k);
+        persistStorage();
+        refreshVoiceBox();
+        previewVoice(k);
+      } catch (e) {
+        toast("Couldn't save that recording.");
+      }
+    };
+    mr.start();
+    gRec.timer = setTimeout(stopGrownRecord, GROWN_RECORD_SECONDS * 1000);
+    refreshVoiceList();
+  }
+
+  function stopGrownRecord() {
+    clearTimeout(gRec.timer);
+    if (gRec.mr && gRec.mr.state === "recording") gRec.mr.stop();
+    else if (gRec.key && !gRec.mr) { gRec.key = null; refreshVoiceList(); }
+  }
+
+  function previewVoice(key) {
+    stopSpeaking();
+    loadVoice(key).then((buf) => buf && playVoiceBuffer(buf))
+      .catch(() => toast("Couldn't play that recording."));
+  }
+
+  async function deleteVoice(key) {
+    try { await idbDel("audio", key); } catch (e) {}
+    voices.keys.delete(key);
+    voices.buffers.delete(key);
+    refreshVoiceBox();
+  }
 
   // =================================================================
   //  Recording (kept in memory only, thrown away after each word)
@@ -348,6 +569,114 @@
   }
 
   // =================================================================
+  //  My words: words from his own life, with an emoji or a photo
+  // =================================================================
+  const photoURLs = new Map();   // word id -> object URL of its photo
+  let pendingPhoto = null;       // photo picked in the add-word form, not saved yet
+  let mwLastSound = null;        // keep the same sound picked when adding several words
+
+  Promise.all(data.myWords.filter((x) => x.photo).map((x) =>
+    idbGet("photos", x.id).then((r) => {
+      if (r) photoURLs.set(x.id, URL.createObjectURL(new Blob([r.buf], { type: r.type })));
+    }).catch(() => {})
+  )).then(() => { if (screen === "play") render(); else if (screen === "grown") refreshMyList(); });
+
+  function picHTML(item) {
+    const url = item.photo && photoURLs.get(item.id);
+    if (url) return `<img class="photo" src="${url}" alt="">`;
+    return item.p || "⭐";
+  }
+
+  // Square-crop and shrink a photo so it stays small on the iPad.
+  function shrinkPhoto(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth, h = img.naturalHeight, side = Math.min(w, h), size = Math.min(480, side);
+        const c = document.createElement("canvas");
+        c.width = c.height = size;
+        c.getContext("2d").drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
+        URL.revokeObjectURL(url);
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error("photo"))), "image/jpeg", 0.82);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("photo")); };
+      img.src = url;
+    });
+  }
+
+  async function onPhotoPicked(input) {
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    try { pendingPhoto = await shrinkPhoto(file); } catch (e) { toast("Couldn't use that photo."); return; }
+    const pv = document.getElementById("mw-preview");
+    if (pv) {
+      if (pv.dataset.url) URL.revokeObjectURL(pv.dataset.url);
+      pv.dataset.url = URL.createObjectURL(pendingPhoto);
+      pv.innerHTML = `<img src="${pv.dataset.url}" alt="Chosen photo">
+        <button class="mini" data-act="mw-clear-photo" aria-label="Remove photo">✕</button>`;
+    }
+  }
+
+  function clearPendingPhoto() {
+    pendingPhoto = null;
+    const pv = document.getElementById("mw-preview");
+    if (pv) { if (pv.dataset.url) URL.revokeObjectURL(pv.dataset.url); pv.dataset.url = ""; pv.innerHTML = ""; }
+  }
+
+  async function addMyWord() {
+    const wordEl = document.getElementById("mw-word");
+    const w = wordEl.value.replace(/[|<>]/g, "").replace(/\s+/g, " ").trim();
+    if (!w) { toast("Type a word first."); wordEl.focus(); return; }
+    const sound = document.getElementById("mw-sound").value;
+    const emoji = document.getElementById("mw-emoji").value.trim().slice(0, 12);
+    if (data.myWords.some((x) => x.sound === sound && x.w.toLowerCase() === w.toLowerCase())) {
+      toast(`"${w}" is already in My words for ${SOUNDS[sound].label}.`);
+      return;
+    }
+    const id = "w" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const item = { id, w, sound, p: emoji, mine: true };
+    if (pendingPhoto) {
+      try {
+        await idbPut("photos", id, { type: pendingPhoto.type, buf: await pendingPhoto.arrayBuffer() });
+        item.photo = true;
+        photoURLs.set(id, URL.createObjectURL(pendingPhoto));
+        persistStorage();
+      } catch (e) {
+        toast("Couldn't save the photo, so the word was added without it.");
+      }
+    }
+    data.myWords.push(item);
+    mwLastSound = sound;
+    save();
+    const h = SOUNDS[sound].highlight;
+    const hasSound = h === "ending" || new RegExp(h.source, "i").test(w);
+    toast(hasSound ? `Added "${w}" to ${SOUNDS[sound].label}.`
+      : `Added "${w}". Heads up: it doesn't seem to have the ${SOUNDS[sound].label} sound in it.`, hasSound ? 3000 : 6000);
+    pendingPhoto = null;
+    rerenderGrown();
+  }
+
+  function deleteMyWord(id) {
+    const item = data.myWords.find((x) => x.id === id);
+    if (!item || !confirm(`Remove "${item.w}" from My words?`)) return;
+    data.myWords = data.myWords.filter((x) => x.id !== id);
+    if (item.photo) {
+      idbDel("photos", id).catch(() => {});
+      if (photoURLs.has(id)) URL.revokeObjectURL(photoURLs.get(id));
+      photoURLs.delete(id);
+    }
+    const k = item.sound;
+    if (!myItemsFor(k).length) {
+      if (S().sounds[k].level === MY_LEVEL) S().sounds[k].level = defaultLevel(k);
+      if (voicePick && voicePick.sound === k && voicePick.level === MY_LEVEL) voicePick.level = S().sounds[k].level;
+    }
+    save();
+    rerenderGrown();
+  }
+
+  // =================================================================
   //  Screens
   // =================================================================
   let screen = "home";
@@ -356,6 +685,7 @@
 
   function show(name) {
     if (screen === "play" && name !== "play") { resetRecording(); stopSpeaking(); }
+    if (screen === "grown" && name !== "grown") { stopGrownRecord(); stopSpeaking(); clearPendingPhoto(); }
     screen = name;
     render();
     window.scrollTo(0, 0);
@@ -404,21 +734,29 @@
   }
 
   // ---------- Starting a round ----------
-  function statKey(sound, level, item) { return `${sound}|${level}|${item.w}`; }
+  // My words always count under the "My words" level, even when mixed into another level.
+  function statKey(sound, level, item) { return `${sound}|${item.mine ? MY_LEVEL : level}|${item.w}`; }
 
   // Pick words for a round. Words he finds tricky come up a bit more often.
   function pickWords(sound, level, n) {
     const lv = findLevel(sound, level);
     const pool = lv ? lv.items : [];
     if (!pool.length) return [];
-    const weighted = pool.map((item) => {
+    const weighted = (list) => list.map((item) => {
       const st = data.stats[statKey(sound, level, item)];
       const tricky = st && st.t >= 2 && st.g / st.t < 0.5;
       return { item, w: Math.random() * (tricky ? 1.6 : 1) };
     }).sort((a, b) => b.w - a.w).map((x) => x.item);
     const out = [];
-    while (out.length < n) out.push(...(out.length ? shuffle(pool) : weighted));
-    return out.slice(0, n);
+    while (out.length < n) out.push(...(out.length ? shuffle(pool) : weighted(pool)));
+    out.length = n;
+    // Mix in about a third of his own words (not into the just-the-sound level).
+    const mine = myItemsFor(sound);
+    if (S().mixMine && level !== MY_LEVEL && level !== "syllables" && mine.length) {
+      const picks = weighted(mine).slice(0, Math.min(mine.length, Math.max(1, Math.round(n / 3))));
+      shuffle([...Array(n).keys()]).slice(0, picks.length).forEach((pos, i) => { out[pos] = picks[i]; });
+    }
+    return out;
   }
 
   function startRound(sound) {
@@ -436,9 +774,9 @@
     const item = currentItem();
     const btn = app.querySelector('[data-act="listen"]');
     btn && btn.classList.add("active");
-    const word = item.say || item.w;
-    const text = item.pair ? `${item.pair} ... ${word}` : word;
-    say(text, () => btn && btn.classList.remove("active"));
+    const parts = item.pair ? [{ text: item.pair }] : [];
+    parts.push({ text: item.w, say: item.say });
+    speak(parts, () => btn && btn.classList.remove("active"));
   }
 
   // ---------- Play ----------
@@ -461,7 +799,7 @@
         <div class="cue">${s.cue} ${esc(s.label)} · ${esc(s.cueText)}</div>
         <main class="card ${item.pair ? "has-pair" : ""} ${mic && S().voiceMeter ? "has-meter" : ""}" aria-label="${esc(lvl ? lvl.name : "")}">
           ${item.pair ? `<div class="pair"><span aria-hidden="true">${item.pp}</span> ${esc(item.pair)} <span class="arrow">➜</span></div>` : ""}
-          <div class="pic" aria-hidden="true">${item.p}</div>
+          <div class="pic" aria-hidden="true">${picHTML(item)}</div>
           <div class="word ${long ? "long" : ""}">${highlightItem(round.sound, item)}</div>
           ${mic && S().voiceMeter ? `<div class="meter hidden" aria-hidden="true">
             <span>🔈</span><div class="meter-track"><div class="meter-fill"></div></div><span>📣</span></div>` : ""}
@@ -644,7 +982,7 @@
   function statsHTML() {
     const rows = [];
     for (const [k, snd] of Object.entries(SOUNDS)) {
-      for (const lv of snd.levels) {
+      for (const lv of levelsOf(k)) {
         let t = 0, g = 0;
         const prefix = `${k}|${lv.id}|`;
         for (const [key, v] of Object.entries(data.stats)) {
@@ -678,6 +1016,102 @@
       <p class="note">"Tries" counts every Great or Again tap. Skips aren't counted.</p>`;
   }
 
+  // ---------- Grown-ups: My words & grown-up voice sections ----------
+  let voicePick = null;   // which sound/level the voice list shows
+
+  function rerenderGrown() {
+    if (screen !== "grown") return;
+    const y = window.scrollY;
+    render();
+    window.scrollTo(0, y);
+  }
+
+  const soundOptions = (selected) => Object.entries(SOUNDS).map(([k, s]) =>
+    `<option value="${k}" ${k === selected ? "selected" : ""}>${s.cue} ${esc(s.label)}${S().sounds[k].on ? "" : " (hidden)"}</option>`).join("");
+
+  function myListHTML() {
+    if (!data.myWords.length) return `<p class="note">No words added yet.</p>`;
+    const rows = Object.keys(SOUNDS).flatMap((k) => myItemsFor(k).map((it) => `
+      <li class="wrow">
+        <span class="thumb" aria-hidden="true">${picHTML(it)}</span>
+        <span class="wtext">${highlightItem(k, it)}<small>${SOUNDS[k].cue} ${esc(SOUNDS[k].label)}${hasVoice(it.w) ? " · 🎙️ your voice" : ""}</small></span>
+        <button class="mini" data-act="mw-del" data-id="${esc(it.id)}" aria-label="Remove ${esc(it.w)}">🗑</button>
+      </li>`)).join("");
+    return `<ul class="wlist">${rows}</ul>`;
+  }
+
+  function refreshMyList() {
+    const el = document.getElementById("mw-list");
+    if (el) el.innerHTML = myListHTML();
+  }
+
+  // Every word (and pair word) in one level, once each.
+  function voiceTexts(sound, level) {
+    const lv = findLevel(sound, level);
+    if (!lv) return [];
+    const seen = new Set(), out = [];
+    for (const it of lv.items) {
+      for (const [text, pic] of [[it.pair, it.pp], [it.w, null]]) {
+        if (!text) continue;
+        const key = voiceKey(text);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push({ text, key, pic: pic || picHTML(it) });
+      }
+    }
+    return out;
+  }
+
+  function ensureVoicePick() {
+    if (!voicePick || !SOUNDS[voicePick.sound]) {
+      const k = Object.keys(SOUNDS).find((x) => S().sounds[x].on) || Object.keys(SOUNDS)[0];
+      voicePick = { sound: k, level: S().sounds[k].level };
+    }
+    if (!findLevel(voicePick.sound, voicePick.level)) voicePick.level = S().sounds[voicePick.sound].level;
+    return voicePick;
+  }
+
+  function voiceListHTML() {
+    const vp = ensureVoicePick();
+    const texts = voiceTexts(vp.sound, vp.level);
+    const done = texts.filter((t) => voices.keys.has(t.key)).length;
+    const rows = texts.map((t) => {
+      const has = voices.keys.has(t.key);
+      const recording = gRec.key === t.key;
+      return `<li class="wrow ${has ? "has" : ""}">
+        <span class="thumb" aria-hidden="true">${t.pic}</span>
+        <span class="wtext">${esc(t.text)}<small>${has ? "✅ recorded" : "iPad voice"}</small></span>
+        <button class="mini ${recording ? "recording" : ""}" data-act="vrec" data-key="${esc(t.key)}"
+          ${gRec.key && !recording ? "disabled" : ""}>${recording ? "⏹ Stop" : has ? "🎙️ Redo" : "🎙️ Record"}</button>
+        <button class="mini" data-act="vplay" data-key="${esc(t.key)}" ${has && !gRec.key ? "" : "disabled"} aria-label="Play your recording of ${esc(t.text)}">▶️</button>
+        <button class="mini" data-act="vdel" data-key="${esc(t.key)}" ${has && !gRec.key ? "" : "disabled"} aria-label="Delete your recording of ${esc(t.text)}">🗑</button>
+      </li>`;
+    }).join("");
+    return `<p class="note"><b>${done} of ${texts.length}</b> recorded at this level. ${voices.keys.size} recordings in total.</p>
+      <ul class="wlist">${rows}</ul>`;
+  }
+
+  function voiceBoxHTML() {
+    const vp = ensureVoicePick();
+    return `<div class="voice-pick">
+        <label class="field">Sound <select data-vp="sound">${soundOptions(vp.sound)}</select></label>
+        <label class="field">Level <select data-vp="level">
+          ${levelsOf(vp.sound).map((l) => `<option value="${l.id}" ${l.id === vp.level ? "selected" : ""}>${esc(l.name)}</option>`).join("")}
+        </select></label>
+      </div>
+      <div id="voice-list">${voiceListHTML()}</div>`;
+  }
+
+  function refreshVoiceList() {
+    const el = document.getElementById("voice-list");
+    if (el) el.innerHTML = voiceListHTML();
+  }
+  function refreshVoiceBox() {
+    const el = document.getElementById("voice-box");
+    if (el) el.innerHTML = voiceBoxHTML();
+    refreshMyList();
+  }
+
   function renderGrown() {
     const st = S();
     const soundCards = Object.entries(SOUNDS).map(([k, s]) => `
@@ -687,7 +1121,7 @@
           ${st.sounds[k].on ? "checked" : ""}> Show this sound on the home screen</label>
         <label class="field">Level
           <select data-set="sound-level" data-sound="${k}">
-            ${s.levels.map((l) => `<option value="${l.id}" ${l.id === st.sounds[k].level ? "selected" : ""}>
+            ${levelsOf(k).map((l) => `<option value="${l.id}" ${l.id === st.sounds[k].level ? "selected" : ""}>
               ${esc(l.name)} — ${esc(l.hint)} (${l.items.length} items)</option>`).join("")}
           </select>
         </label>
@@ -722,6 +1156,43 @@
           <div class="field">Sticker collection
             ${radioGroup("theme", Object.entries(THEMES).map(([id, t]) => [id, `${t.mascot} ${t.name}`]), st.theme)}
           </div>
+        </section>
+
+        <section class="panel" id="my-words">
+          <h2>⭐ My words</h2>
+          <p class="note">Add words from his own life: family names, pets, toys, foods, places. They're saved on
+            this iPad only, never online. Add them in the Home Screen app, not in Safari (they keep separate lists).</p>
+          <div class="add-word">
+            <label class="field">Word or short phrase
+              <input type="text" id="mw-word" maxlength="40" autocomplete="off" placeholder="e.g. Grandma">
+            </label>
+            <label class="field">Sound it practises
+              <select id="mw-sound">${soundOptions(mwLastSound || ensureVoicePick().sound)}</select>
+            </label>
+            <div class="field">Picture
+              <div class="pic-row">
+                <input type="text" id="mw-emoji" class="emoji-in" maxlength="12" autocomplete="off" placeholder="Emoji, e.g. 🐶">
+                <span class="or">or</span>
+                <label class="photo-btn">📷 Photo<input type="file" id="mw-photo" accept="image/*" class="vh"></label>
+                <span id="mw-preview" class="mw-preview"></span>
+              </div>
+            </div>
+            <button class="pill main" data-act="mw-add">➕ Add word</button>
+          </div>
+          <label class="toggle"><input type="checkbox" data-set="mixMine" ${st.mixMine ? "checked" : ""}>
+            Mix My words into his rounds (about 1 in 3 words)</label>
+          <p class="note">Each sound with My words also gets a "⭐ My words" level, to practise only those.</p>
+          <div id="mw-list">${myListHTML()}</div>
+        </section>
+
+        <section class="panel">
+          <h2>🎙️ Grown-up voice</h2>
+          <p class="note">Record yourself (or his mom) saying the words, and he'll hear your voice instead of the iPad
+            voice. Say each word clearly and a little slowly, and lean on the target sound ("rrrabbit", "toaD").
+            Recordings are saved on this iPad only. Talking speed only changes the iPad voice.</p>
+          <label class="toggle"><input type="checkbox" data-set="useMyVoice" ${st.useMyVoice ? "checked" : ""}>
+            Play grown-up recordings when there is one</label>
+          <div id="voice-box">${voiceBoxHTML()}</div>
         </section>
 
         <section class="panel">
@@ -759,11 +1230,13 @@
 
         <section class="panel">
           <h2>Privacy &amp; reset</h2>
-          <p class="note">Everything stays on this iPad. Recordings are never saved: each one is deleted as soon
-            as he moves to the next word. No accounts, ads or tracking.</p>
+          <p class="note">Everything stays on this iPad. His own recordings are never saved: each one is deleted as
+            soon as he moves to the next word. Grown-up recordings and My words photos are kept on this iPad until
+            you delete them (deleting the app from the Home Screen erases them too). No accounts, ads or tracking.</p>
           <div class="actions" style="justify-content:flex-start">
             <button class="pill danger" data-act="reset-progress">Reset progress &amp; stars</button>
             <button class="pill danger" data-act="reset-stickers">Reset stickers</button>
+            <button class="pill danger" data-act="reset-voices">Delete all grown-up recordings</button>
           </div>
         </section>
       </div>`;
@@ -777,7 +1250,8 @@
       case "theme": st.theme = el.value; break;
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
-      case "autoSay": case "mic": case "sfx": case "voiceMeter": st[key] = el.checked; break;
+      case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine":
+        st[key] = el.checked; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
       case "sound-on": st.sounds[el.dataset.sound].on = el.checked; break;
       case "sound-level": st.sounds[el.dataset.sound].level = el.value; break;
@@ -806,6 +1280,22 @@
         data.stats = {}; data.days = {}; data.stars = 0; save(); render(); toast("Progress reset.");
       }
     },
+    "mw-add": () => addMyWord(),
+    "mw-del": (b) => deleteMyWord(b.dataset.id),
+    "mw-clear-photo": () => clearPendingPhoto(),
+    vrec: (b) => (gRec.key ? stopGrownRecord() : startGrownRecord(b.dataset.key)),
+    vplay: (b) => previewVoice(b.dataset.key),
+    vdel: (b) => deleteVoice(b.dataset.key),
+    "reset-voices": () => {
+      if (confirm("Delete every grown-up recording on this iPad? This can't be undone.")) {
+        stopSpeaking();
+        idbClear("audio").catch(() => {});
+        voices.keys.clear();
+        voices.buffers.clear();
+        refreshVoiceBox();
+        toast("Grown-up recordings deleted.");
+      }
+    },
     "reset-stickers": () => {
       if (confirm("Remove all collected stickers?")) {
         data.stickers = {}; save(); render(); toast("Stickers reset.");
@@ -821,6 +1311,15 @@
   });
 
   app.addEventListener("change", (e) => {
+    if (e.target.id === "mw-photo") { onPhotoPicked(e.target); return; }
+    const vp = e.target.closest("[data-vp]");
+    if (vp) {
+      const p = ensureVoicePick();
+      if (vp.dataset.vp === "sound") { p.sound = vp.value; p.level = S().sounds[vp.value].level; }
+      else p.level = vp.value;
+      refreshVoiceBox();
+      return;
+    }
     const el = e.target.closest("[data-set]");
     if (el) applySetting(el);
   });
@@ -856,6 +1355,7 @@
     if (document.hidden) {
       stopSpeaking();
       if (rec.state === "recording") stopRecording();
+      stopGrownRecord();
     }
   });
 
