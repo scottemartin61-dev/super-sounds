@@ -381,7 +381,7 @@
     }).join("");
 
     app.innerHTML = `
-      <div class="screen home ${on.length > 3 ? "many" : ""}">
+      <div class="screen home ${on.length > 3 ? "many" : ""} ${on.length > 5 ? "lots" : ""}">
         <header class="home-top">
           <span class="counter" aria-label="${data.stars} stars">⭐ ${data.stars}</span>
           <span class="counter" aria-label="${collected().length} stickers">📖 ${collected().length}</span>

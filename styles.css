@@ -152,6 +152,14 @@ button:focus-visible { outline: 4px solid #6aa9ff; outline-offset: 3px; }
   max-width: 230px;
   min-height: clamp(130px, 20vmin, 200px);
 }
+/* Six or more sounds: 4 per row in landscape, smaller mascot */
+.home.lots .hello { margin-top: 0; }
+.home.lots .mascot { font-size: clamp(48px, 8vmin, 80px); }
+.home.lots .tile {
+  flex: 0 1 calc((100% - 3 * clamp(14px, 3vmin, 28px)) / 4);
+  max-width: none;
+  min-height: clamp(110px, 16vmin, 170px);
+}
 @media (orientation: portrait) {
   .home.many .tile {
     flex: 0 1 calc((100% - 2 * clamp(14px, 3vmin, 28px)) / 3);

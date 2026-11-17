@@ -381,7 +381,7 @@ window.SOUNDS = {
     color: "#ffb4a2",
     dark: "#c8553d",
     highlight: /r+/gi,
-    on: false,
+    on: true,
     level: "start",
     tip:
       "Growl like a tiger: \"grrr\". The tongue pulls back and bunches up; " +
@@ -453,7 +453,7 @@ window.SOUNDS = {
     color: "#a8dadc",
     dark: "#2a7f84",
     highlight: /t?ch/gi,
-    on: false,
+    on: true,
     level: "start",
     tip:
       "Make the train sound \"choo-choo\". CH is a \"t\" that slides into \"sh\": " +

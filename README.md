@@ -10,8 +10,10 @@ On by default:
 - 🌊 **SH**
 - 🏎️ **V**
 - 🐸 **G**, including "K or G?" pairs (coat → goat)
+- 🐯 **R**
+- 🚂 **CH**
 
-Off by default (turn on in Grown-ups): 🐯 **R**, 🚂 **CH**, 👅 **TH**, 🐍 **S-blends**.
+Off by default (turn on in Grown-ups): 👅 **TH**, 🐍 **S-blends**.
 
 ## How a round works
 1. He taps a sound. The iPad says each word slowly. Tap 🔊 to hear it again.
