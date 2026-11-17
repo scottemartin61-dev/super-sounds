@@ -1,6 +1,6 @@
 // Offline support: serve the saved copy instantly, refresh it in the background.
 // Bump VERSION when you change files so iPads pick up the update.
-const VERSION = "super-sounds-v5";
+const VERSION = "super-sounds-v6";
 const ASSETS = [
   "./",
   "./index.html",
@@ -14,7 +14,8 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(ASSETS)));
+  // cache: "reload" skips the browser's own cache so every file is the new version.
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: "reload" })))));
   self.skipWaiting();
 });
 

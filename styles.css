@@ -328,6 +328,36 @@ button:focus-visible { outline: 4px solid #6aa9ff; outline-offset: 3px; }
   100% { transform: translate(-50%, -160%) scale(1); opacity: 0; }
 }
 
+.mirror-video {
+  display: none;
+  height: clamp(120px, 26vmin, 260px);
+  aspect-ratio: 4 / 3;
+  max-width: 100%;
+  object-fit: cover;
+  border-radius: 24px;
+  transform: scaleX(-1);   /* like a real mirror */
+  background: #222;
+}
+.card.mirroring .pic { display: none; }
+.card.mirroring .mirror-video { display: block; }
+
+.coach {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--c);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  animation: fade 0.3s ease-out;
+}
+.coach[hidden] { display: none; }
+.coach-pic { font-size: clamp(44px, 8vmin, 72px); line-height: 1; }
+.coach-text { flex: 1; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.coach-text b { font-size: clamp(18px, 2.8vmin, 24px); }
+.coach-text span { font-size: clamp(15px, 2.2vmin, 19px); color: var(--ink); opacity: 0.8; }
+.coach-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.coach-btns .pill.on { background: var(--d); color: #fff; }
+
 .kid-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -10,7 +10,11 @@
 //    hl:   for "Endings" sentences, which words to highlight the end of
 //
 //  Sound fields: on = shown on the home screen by default,
-//                level = the level it starts on.
+//                level = the level it starts on,
+//                coach = the "how to make it" card shown after a miss:
+//                  pic / how / hint: picture and two short lines,
+//                  model: the sound on its own (said before the word after
+//                  a second miss); modelSay = spelling for the iPad voice.
 //  Ask his speech therapist which sounds/levels to practise.
 // =====================================================================
 
@@ -33,6 +37,7 @@ window.SOUNDS = {
       "Say the word slowly and stretch or tap the last sound: \"boa-T\". " +
       "Word pairs show how the tail changes the meaning: toe vs toaD. " +
       "Only judge the ending — it's fine if other sounds aren't perfect.",
+    coach: { pic: "🐕", how: "Don't forget the tail!", hint: "Say the last sound loud and clear" },
     levels: [
       lvl("pairs", "Word pairs", "toe → toad, bow → boat", [
         { pair: "toe", pp: "🦶", w: "toad", p: "🐸" },
@@ -103,6 +108,7 @@ window.SOUNDS = {
       "Sing it! Use a mirror so he can see his tongue lift. " +
       "If it comes out as \"w\" or \"y\", touch the bumpy spot with a lollipop or spoon so he can feel where the tongue goes. " +
       "For blends (blue, clock), say them slowly at first: \"buh-lue\" → \"blue\".",
+    coach: { pic: "👅", how: "Tongue tip up behind your top teeth", hint: "Sing it: la la la 🎵", model: "la la la", modelSay: "lah, lah, lah" },
     levels: [
       lvl("syllables", "Just the sound", "la, lee, loo", [
         { w: "la", say: "lah", p: "🎵" },
@@ -189,6 +195,7 @@ window.SOUNDS = {
       "Lips push forward into a little circle (like a kiss), teeth close together, and blow: \"shhh\" like ocean waves. " +
       "If it sounds like \"s\", push the lips further forward and pull the tongue back a little. " +
       "Practise the long \"shhh\" first, then add a vowel: \"shhh-oe\" → \"shoe\".",
+    coach: { pic: "💋", how: "Lips push out like a kiss", hint: "Blow like the waves: shhh 🌊", model: "shhh" },
     levels: [
       lvl("syllables", "Just the sound", "sha, shoe, shee", [
         { w: "shhh", p: "🌊" },
@@ -252,6 +259,7 @@ window.SOUNDS = {
       "Top teeth rest gently on the bottom lip, then turn the voice on: \"vvvv\" — a buzzy \"f\". " +
       "He should feel his lip tickle. If it comes out as \"b\" (lips together), show him in a mirror that the teeth touch the lip instead. " +
       "If it comes out as \"f\", put his hand on his throat to feel the buzz.",
+    coach: { pic: "🦷", how: "Top teeth rest on your bottom lip", hint: "Turn on the buzz: vvv 🏎️", model: "vroom", modelSay: "vroom, vroom" },
     levels: [
       lvl("syllables", "Just the sound", "va, vee, vroom", [
         { w: "vvvroom", say: "vroom", p: "🏎️" },
@@ -314,6 +322,7 @@ window.SOUNDS = {
       "G and K are made the same way — the back of the tongue pushes up — but G has the voice ON. " +
       "Put his hand on your throat: G buzzes, K doesn't. Gulp like a frog: \"g-g-g\". " +
       "The \"K or G\" pairs (coat / goat) show that the buzz changes the word.",
+    coach: { pic: "🐸", how: "Back of your tongue goes up", hint: "Hand on your throat, feel the buzz: g-g-g", model: "g-g-g", modelSay: "guh, guh, guh" },
     levels: [
       lvl("syllables", "Just the sound", "ga, go, goo", [
         { w: "g-g-g", say: "guh, guh, guh", p: "🐸" },
@@ -388,6 +397,7 @@ window.SOUNDS = {
       "lips are only a little rounded (pushing the lips forward turns it into a \"w\"). " +
       "Try sliding from \"grrr\" into the word: \"grrr-rabbit\". Practise in a mirror. " +
       "R is one of the last sounds children master (often 6–7 years), so keep it light.",
+    coach: { pic: "🐯", how: "Growl! Pull your tongue back", hint: "Lips only a little round: grrr", model: "grrr" },
     levels: [
       lvl("syllables", "Just the sound", "ra, ree, roo", [
         { w: "ra", say: "rah", p: "🐯" },
@@ -459,6 +469,7 @@ window.SOUNDS = {
       "Make the train sound \"choo-choo\". CH is a \"t\" that slides into \"sh\": " +
       "say \"t\" then \"sh\" faster and faster until they join (t-sh → ch). " +
       "Lips push forward a little, like a kiss. A short, popping sound — not a long \"shhh\".",
+    coach: { pic: "🚂", how: "Lips push out, then pop: t-sh!", hint: "Short like a train: choo-choo", model: "choo-choo", modelSay: "choo, choo" },
     levels: [
       lvl("syllables", "Just the sound", "cha, chee, choo", [
         { w: "cha", say: "chah", p: "🚂" },
@@ -522,6 +533,7 @@ window.SOUNDS = {
       "The tongue tip peeks out between the teeth and air blows over it: \"th\". " +
       "Saying \"d\" or \"f\" instead is normal for many children until about 7–8, so keep this playful. " +
       "Silly faces in a mirror help: \"Can you show me your tongue and blow?\"",
+    coach: { pic: "👅", how: "Tongue peeks out between your teeth", hint: "Blow air over your tongue: th", model: "th", modelSay: "thhh" },
     levels: [
       lvl("start", "Start of words", "thumb, three", [
         { w: "thumb", p: "👍" },
@@ -568,6 +580,7 @@ window.SOUNDS = {
     tip:
       "Start with a long snake \"sss\" and then add the rest: \"sss-top\" → \"stop\". " +
       "Dropping the s (\"top\" for \"stop\") is normal for many children until about 7–8, so keep it light.",
+    coach: { pic: "🐍", how: "Snake sound first: sss", hint: "Then the rest: sss-top!", model: "sss", modelSay: "sssss" },
     levels: [
       lvl("start", "Start of words", "spoon, star, snake", [
         { w: "spoon", p: "🥄" },

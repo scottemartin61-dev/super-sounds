@@ -19,7 +19,10 @@ Off by default (turn on in Grown-ups): 👅 **TH**, 🐍 **S-blends**.
 1. He taps a sound. The iPad says each word slowly. Tap 🔊 to hear it again.
 2. He taps 🎤 **My turn** and says the word. A **big-voice meter** fills up as he talks, to encourage speaking out loud rather than whispering. 👂 **Hear me** plays his voice back.
    With **Hands-free** on (Grown-ups → Game settings), he doesn't need to tap: after the word is said, the app listens by itself (the button shows "Listening…"), keeps his word once he starts talking, and stops when he goes quiet. If he says nothing for 6 seconds it stops quietly. Background noise or a grown-up talking can also set it off.
-3. A grown-up taps ⭐ **Great!** or 🔁 **Again**. After 3 tries the game moves on by itself.
+3. A grown-up taps ⭐ **Great!** or 🔁 **Again**. After a miss the game coaches him:
+   - 1st miss: the word again, more slowly, with a "how to make it" card (picture and tip). The card has a 🪞 **Mirror** button that shows the front camera so he can watch his mouth. Nothing is recorded.
+   - 2nd miss: the sound on its own first, then the word ("guh, guh, guh … goat").
+   - 3rd miss: the game moves on by itself.
 4. After 5 words he opens a 🎁 and gets a new sticker for his book, every time.
 
 The **Grown-ups** button on the home screen only opens if you press and hold it for 2 seconds. In there you can set:
@@ -57,7 +60,7 @@ Tips:
 
 ## Changing words
 Edit [words.js](words.js). Each word is `{ w: "word", p: "emoji" }`. Add `say: "..."` if the voice mispronounces something.
-After changing any file, bump `VERSION` in [sw.js](sw.js) (e.g. `super-sounds-v2`). The iPad picks up the update the next time the app is opened, or the time after that.
+After changing any file, bump `VERSION` in [sw.js](sw.js) (e.g. `super-sounds-v2`) and add an entry to [CHANGELOG.md](CHANGELOG.md). The iPad picks up the update the next time the app is opened, or the time after that.
 
 ## Running it on this PC
 ```bash

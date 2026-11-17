@@ -200,13 +200,13 @@
     speechSynthesis.addEventListener?.("voiceschanged", pickVoice);
   }
 
-  function say(text, onEnd) {
+  function say(text, onEnd, rate) {
     if (!canSpeak) { onEnd && onEnd(); return; }
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.lang = voice ? voice.lang : "en-US";
-    u.rate = S().rate;
+    u.rate = rate || S().rate;
     u.pitch = 1.05;
     if (onEnd) { u.onend = onEnd; u.onerror = onEnd; }
     speechSynthesis.speak(u);
@@ -328,10 +328,11 @@
 
   // Say a list of parts ([{text, say}]) one after another, using a grown-up
   // recording for any part that has one and the iPad voice for the rest.
-  function speak(parts, onEnd) {
+  // rate (optional) slows the iPad voice down; grown-up recordings play as recorded.
+  function speak(parts, onEnd, rate) {
     const useRec = S().useMyVoice && parts.some((p) => hasVoice(p.text));
     if (!useRec) {
-      say(parts.map((p) => p.say || p.text).join(" ... "), onEnd);
+      say(parts.map((p) => p.say || p.text).join(" ... "), onEnd, rate);
       return;
     }
     stopSpeaking();
@@ -341,7 +342,7 @@
       if (i >= parts.length) { onEnd && onEnd(); return; }
       const p = parts[i];
       const done = () => setTimeout(() => next(i + 1), i < parts.length - 1 ? 500 : 0);
-      const tts = () => { if (token === voices.token) say(p.say || p.text, done); };
+      const tts = () => { if (token === voices.token) say(p.say || p.text, done, rate); };
       if (!hasVoice(p.text)) { tts(); return; }
       loadVoice(voiceKey(p.text))
         .then((buf) => { if (token !== voices.token) return; buf ? playVoiceBuffer(buf, done) : tts(); })
@@ -805,7 +806,7 @@
   let reward = null;     // the sticker just earned
 
   function show(name) {
-    if (screen === "play" && name !== "play") { resetRecording(); stopSpeaking(); }
+    if (screen === "play" && name !== "play") { resetRecording(); stopSpeaking(); stopMirror(); }
     if (screen === "grown" && name !== "grown") { stopGrownRecord(); stopSpeaking(); clearPendingPhoto(); }
     screen = name;
     render();
@@ -884,24 +885,96 @@
     const level = S().sounds[sound].level;
     const items = pickWords(sound, level, S().perRound);
     if (!items.length) { toast("No words for this level yet."); return; }
-    round = { sound, level, items, idx: 0, tries: 0, greats: 0, busy: false, sayTok: 0 };
+    round = { sound, level, items, idx: 0, tries: 0, greats: 0, busy: false, sayTok: 0, coach: 0 };
     show("play");
     if (S().autoSay) sayCurrent(); // called inside the tap so iOS allows it
   }
 
   const currentItem = () => round.items[round.idx];
 
+  // ---------- Coaching after a miss ----------
+  // round.coach: 0 = normal, 1 = slower + "how to" card, 2 = the sound on its own, then the word.
+  const coachOf = (k) => SOUNDS[k].coach || { pic: SOUNDS[k].cue, how: SOUNDS[k].cueText, hint: "" };
+  const slowRate = () => Math.max(0.45, S().rate * 0.7);
+
+  function coachHTML() {
+    const c = coachOf(round.sound);
+    return `<div class="coach-pic" aria-hidden="true">${c.pic}</div>
+      <div class="coach-text"><b>${esc(c.how)}</b>${c.hint ? `<span>${esc(c.hint)}</span>` : ""}</div>
+      <div class="coach-btns">
+        <button class="pill" data-act="coach-say">🔊 ${c.model ? "Just the sound" : "Slowly"}</button>
+        <button class="pill ${mirror.stream ? "on" : ""}" data-act="mirror">🪞 ${mirror.stream ? "Close mirror" : "Mirror"}</button>
+      </div>`;
+  }
+
+  function showCoach() {
+    const el = document.getElementById("coach");
+    if (!el) return;
+    el.innerHTML = coachHTML();
+    el.hidden = false;
+  }
+
+  function sayModel() {
+    const item = currentItem();
+    const c = coachOf(round.sound);
+    stopSpeaking();
+    speak([c.model ? { text: c.model, say: c.modelSay } : { text: item.w, say: item.say }], null, slowRate());
+  }
+
+  // ---------- Mirror: the front camera, so he can watch his mouth. Nothing is recorded. ----------
+  const mirror = { stream: null, token: 0 };
+
+  async function toggleMirror() {
+    if (mirror.stream) { stopMirror(); return; }
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { toast("There's no camera on this device."); return; }
+    const tok = ++mirror.token;
+    let s;
+    try {
+      s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+    } catch (e) {
+      toast("The camera is blocked. A grown-up can allow it in the iPad's Settings → Safari → Camera.", 5000);
+      return;
+    }
+    if (tok !== mirror.token || screen !== "play") { s.getTracks().forEach((t) => t.stop()); return; }
+    mirror.stream = s;
+    updateMirror();
+  }
+
+  function stopMirror() {
+    mirror.token++;
+    if (mirror.stream) mirror.stream.getTracks().forEach((t) => t.stop());
+    mirror.stream = null;
+    updateMirror();
+  }
+
+  function updateMirror() {
+    if (screen !== "play") return;
+    const card = app.querySelector(".card");
+    const v = document.getElementById("mirror-video");
+    if (card) card.classList.toggle("mirroring", !!mirror.stream);
+    if (v) {
+      if (mirror.stream && v.srcObject !== mirror.stream) { v.srcObject = mirror.stream; v.play().catch(() => {}); }
+      if (!mirror.stream) v.srcObject = null;
+    }
+    const b = app.querySelector('[data-act="mirror"]');
+    if (b) { b.textContent = mirror.stream ? "🪞 Close mirror" : "🪞 Mirror"; b.classList.toggle("on", !!mirror.stream); }
+  }
+
   function sayCurrent() {
     const item = currentItem();
     const btn = app.querySelector('[data-act="listen"]');
     btn && btn.classList.add("active");
-    const parts = item.pair ? [{ text: item.pair }] : [];
+    const step = round.coach || 0;
+    const c = coachOf(round.sound);
+    const parts = [];
+    if (step >= 2) parts.push(c.model ? { text: c.model, say: c.modelSay } : { text: item.w, say: item.say });
+    else if (item.pair) parts.push({ text: item.pair });
     parts.push({ text: item.w, say: item.say });
     const tok = ++round.sayTok;
     speak(parts, () => {
       btn && btn.classList.remove("active");
       if (round && tok === round.sayTok) maybeListen();
-    });
+    }, step >= 1 ? slowRate() : undefined);
   }
 
   // ---------- Play ----------
@@ -925,11 +998,13 @@
         <main class="card ${item.pair ? "has-pair" : ""} ${mic && S().voiceMeter ? "has-meter" : ""}" aria-label="${esc(lvl ? lvl.name : "")}">
           ${item.pair ? `<div class="pair"><span aria-hidden="true">${item.pp}</span> ${esc(item.pair)} <span class="arrow">➜</span></div>` : ""}
           <div class="pic" aria-hidden="true">${picHTML(item)}</div>
+          <video class="mirror-video" id="mirror-video" playsinline muted autoplay aria-label="Mirror"></video>
           <div class="word ${long ? "long" : ""}">${highlightItem(round.sound, item)}</div>
           ${mic && S().voiceMeter ? `<div class="meter hidden" aria-hidden="true">
             <span>🔈</span><div class="meter-track"><div class="meter-fill"></div></div><span>📣</span></div>` : ""}
           <div class="msg" id="msg" aria-live="polite"></div>
         </main>
+        <section class="coach" id="coach" aria-label="How to make the sound" ${round.coach ? "" : "hidden"}>${round.coach ? coachHTML() : ""}</section>
         <section class="kid-row ${mic ? "" : "two"}">
           <button class="big-btn" data-act="listen"><span class="ico">🔊</span>Listen</button>
           ${mic ? `
@@ -944,6 +1019,7 @@
         </section>
       </div>`;
     updateKidRow();
+    updateMirror();
   }
 
   function updateKidRow() {
@@ -1009,7 +1085,9 @@
       setMsg("Good trying! Let's try a new one.");
       setTimeout(nextWord, 1500);
     } else {
-      setMsg("Good trying! Listen again 👂");
+      round.coach = round.tries;   // 1: slower + how-to card, 2: the sound on its own first
+      showCoach();
+      setMsg(round.coach === 1 ? "Good trying! Let's go slow 🐢" : "Sound first, then the word 👂");
       setTimeout(() => { if (screen === "play") sayCurrent(); }, 500);
     }
   }
@@ -1026,6 +1104,8 @@
     resetRecording();
     round.idx++;
     round.tries = 0;
+    round.coach = 0;
+    stopMirror();
     round.busy = false;
     if (round.idx >= round.items.length) { finishRound(); return; }
     render();
@@ -1178,6 +1258,12 @@
     const lv = findLevel(sound, level);
     if (!lv) return [];
     const seen = new Set(), out = [];
+    const c = SOUNDS[sound].coach;
+    if (c && c.model) {
+      const key = voiceKey(c.model);
+      seen.add(key);
+      out.push({ text: c.model, key, pic: c.pic, note: "the sound on its own (used for coaching)" });
+    }
     for (const it of lv.items) {
       for (const [text, pic] of [[it.pair, it.pp], [it.w, null]]) {
         if (!text) continue;
@@ -1208,7 +1294,7 @@
       const recording = gRec.key === t.key;
       return `<li class="wrow ${has ? "has" : ""}">
         <span class="thumb" aria-hidden="true">${t.pic}</span>
-        <span class="wtext">${esc(t.text)}<small>${has ? "✅ recorded" : "iPad voice"}</small></span>
+        <span class="wtext">${esc(t.text)}<small>${t.note ? esc(t.note) + " · " : ""}${has ? "✅ recorded" : "iPad voice"}</small></span>
         <button class="mini ${recording ? "recording" : ""}" data-act="vrec" data-key="${esc(t.key)}"
           ${gRec.key && !recording ? "disabled" : ""}>${recording ? "⏹ Stop" : has ? "🎙️ Redo" : "🎙️ Record"}</button>
         <button class="mini" data-act="vplay" data-key="${esc(t.key)}" ${has && !gRec.key ? "" : "disabled"} aria-label="Play your recording of ${esc(t.text)}">▶️</button>
@@ -1398,6 +1484,8 @@
     home: () => show("home"),
     book: () => show("book"),
     listen: () => { player.pause(); sayCurrent(); },
+    "coach-say": () => { player.pause(); sayModel(); },
+    mirror: () => toggleMirror(),
     record: () => (rec.state === "recording" ? stopRecording()
       : rec.state === "listening" ? switchToManual() : startRecording()),
     hear: () => playBack(),
@@ -1489,6 +1577,7 @@
       if (rec.state === "listening") { resetRecording(); updateKidRow(); }
       else if (rec.state === "recording") stopRecording();
       stopGrownRecord();
+      stopMirror();
     }
   });
 
