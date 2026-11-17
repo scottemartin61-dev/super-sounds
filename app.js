@@ -1462,8 +1462,9 @@
         <label class="field">Level
           <select data-set="sound-level" data-sound="${k}">
             ${levelsOf(k).map((l) => `<option value="${l.id}" ${l.id === st.sounds[k].level ? "selected" : ""}>
-              ${esc(l.name)} — ${esc(l.hint)} (${l.items.length} items)</option>`).join("")}
+              ${esc(l.name)} (${l.items.length})</option>`).join("")}
           </select>
+          <span class="note level-hint" id="hint-${k}">e.g. ${esc((findLevel(k, st.sounds[k].level) || {}).hint || "")}</span>
         </label>
         <details><summary>How to coach the ${esc(s.label)} sound</summary><p>${esc(s.tip)}</p></details>
       </div>`).join("");
@@ -1605,7 +1606,13 @@
         st[key] = el.checked; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
       case "sound-on": st.sounds[el.dataset.sound].on = el.checked; break;
-      case "sound-level": st.sounds[el.dataset.sound].level = el.value; break;
+      case "sound-level": {
+        st.sounds[el.dataset.sound].level = el.value;
+        const hint = document.getElementById("hint-" + el.dataset.sound);
+        const lv = findLevel(el.dataset.sound, el.value);
+        if (hint && lv) hint.textContent = "e.g. " + lv.hint;
+        break;
+      }
     }
     save();
   }

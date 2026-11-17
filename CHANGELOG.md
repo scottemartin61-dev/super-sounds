@@ -3,6 +3,12 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v12 · 2026-11-17 · Tidier Grown-ups screen
+- **Grown-up voice and My words lists:** on phones the word no longer gets squeezed to one letter per line.
+  The Record / ▶️ / 🗑 buttons move to their own line underneath when there isn't room (iPad stays on one line).
+- **Level menus** show just the level name, like "Start of words (10)", so they aren't cut off. The examples now sit underneath ("e.g. lion, leaf").
+- **Checkboxes** stay full size next to long settings and line up with the first line of text.
+
 ## v11 · 2026-11-17 · Pictures that match the sound, captions back on phones
 - The short explanation under each sound tile ("Race car: vvvroom!") shows on phones again, in a smaller size.
 - 🐸 G is now 🦃 **"Turkey talk: gobble gobble!"**: a turkey really says the sound, where a frog doesn't.

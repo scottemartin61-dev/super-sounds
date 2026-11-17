@@ -506,8 +506,8 @@ button.slot { padding: 0; border-radius: 22px; }
 }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
 .seg label:has(input:checked) { background: var(--ink); color: #fff; }
-.toggle { display: flex; align-items: center; gap: 12px; font-size: 17px; font-weight: 700; cursor: pointer; }
-.toggle input { width: 26px; height: 26px; accent-color: var(--ink); }
+.toggle { display: flex; align-items: flex-start; gap: 12px; font-size: 17px; font-weight: 700; line-height: 1.35; cursor: pointer; }
+.toggle input { flex: none; width: 26px; height: 26px; margin: 0; accent-color: var(--ink); }   /* never shrink beside long text */
 .sound-card {
   border: 3px solid var(--c);
   border-radius: 18px;
@@ -519,6 +519,7 @@ button.slot { padding: 0; border-radius: 22px; }
 .sound-card h3 { font-size: 20px; display: flex; align-items: center; gap: 10px; }
 .sound-card details summary { cursor: pointer; font-weight: 700; color: var(--d); font-size: 16px; }
 .sound-card details p { margin-top: 8px; }
+.level-hint { font-weight: 600; }
 table { border-collapse: collapse; width: 100%; font-size: 16px; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 700; }
@@ -555,8 +556,9 @@ th { color: var(--muted); font-weight: 700; }
 .wlist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .wrow {
   display: flex;
+  flex-wrap: wrap;          /* buttons drop to their own line when the screen is narrow */
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
   padding: 8px 10px;
   border: 2px solid var(--line);
   border-radius: 16px;
@@ -564,7 +566,7 @@ th { color: var(--muted); font-weight: 700; }
 .wrow.has { border-color: #bfe3c4; background: #f5fbf5; }
 .wrow .thumb { flex: none; width: 56px; font-size: 40px; line-height: 1; text-align: center; }
 .wrow .thumb img { width: 56px; height: 56px; object-fit: cover; border-radius: 12px; display: block; }
-.wrow .wtext { flex: 1; min-width: 0; font-size: 19px; font-weight: 700; overflow-wrap: anywhere; }
+.wrow .wtext { flex: 1 1 150px; min-width: 0; font-size: 19px; font-weight: 700; overflow-wrap: anywhere; }
 .wrow .wtext mark { background: none; color: var(--d, #c8553d); text-decoration: underline; }
 .wrow .wtext small { display: block; font-size: 14px; font-weight: 600; color: var(--muted); }
 .mini {
@@ -578,6 +580,7 @@ th { color: var(--muted); font-weight: 700; }
   box-shadow: var(--shadow);
 }
 .mini.recording { background: #fbe3e1; color: #9b2c20; }
+.wrow .mini:first-of-type { margin-left: auto; }   /* keep the buttons together on the right */
 .voice-pick { display: flex; flex-wrap: wrap; gap: 12px; }
 .voice-pick .field { flex: 1 1 220px; }
 .pic img.photo {
