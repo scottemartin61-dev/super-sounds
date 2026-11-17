@@ -3,6 +3,12 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v8 · 2026-11-17 · Toilets & gadgets theme
+- New sticker theme **🚽 Toilets & gadgets** (Grown-ups → Him → Sticker collection): 28 stickers like 🚽 🧻 🪠 📷 📺 🔊 🤖 🛸.
+- With this theme, ⭐ **Great!** plays a cartoon **flush** instead of the chime, and opening the present goes **whoosh**.
+  The "Gentle chimes" setting turns these off too.
+- New words: toilet (L), flush (SH), gadget (G), camera and speaker (R), speaker (S-blends).
+
 ## v7 · 2026-11-17 · Phone version
 - Works on iPhones (and other phones) held upright or sideways. Every screen fits without scrolling,
   except Grown-ups, which scrolls as before.

@@ -254,6 +254,78 @@
     });
   }
 
+  // A short noise buffer, shared by the toilet-theme sounds.
+  function noiseBuffer(ctx, seconds) {
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  // Toilet theme: a gentle cartoon flush (swirling water, then a few bubbles).
+  function flush() {
+    if (!S().sfx) return;
+    const ctx = audioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx, 1.3);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(1400, t);
+    bp.frequency.exponentialRampToValueAtTime(260, t + 1.2);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.12);
+    g.gain.setValueAtTime(0.22, t + 0.5);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.25);
+    src.connect(bp).connect(g).connect(ctx.destination);
+    src.start(t);
+    src.stop(t + 1.3);
+    // bubbles
+    [0.95, 1.1, 1.22].forEach((dt, i) => {
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      const s = t + dt;
+      o.type = "sine";
+      o.frequency.setValueAtTime(300 + i * 90, s);
+      o.frequency.exponentialRampToValueAtTime(700 + i * 120, s + 0.08);
+      og.gain.setValueAtTime(0, s);
+      og.gain.linearRampToValueAtTime(0.12, s + 0.01);
+      og.gain.exponentialRampToValueAtTime(0.001, s + 0.1);
+      o.connect(og).connect(ctx.destination);
+      o.start(s);
+      o.stop(s + 0.12);
+    });
+  }
+
+  // Toilet theme: a quick whoosh when the present opens.
+  function whoosh() {
+    if (!S().sfx) return;
+    const ctx = audioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx, 0.6);
+    const f = ctx.createBiquadFilter();
+    f.type = "bandpass";
+    f.Q.value = 2;
+    f.frequency.setValueAtTime(400, t);
+    f.frequency.exponentialRampToValueAtTime(3200, t + 0.45);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.25, t + 0.2);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    src.connect(f).connect(g).connect(ctx.destination);
+    src.start(t);
+    src.stop(t + 0.6);
+  }
+
+  // The "well done" sound for the current sticker theme.
+  function greatSound() {
+    if (theme().sfx === "flush") flush(); else chime("small");
+  }
+
   // iOS only allows sound after the first touch — unlock both on first tap.
   document.addEventListener("pointerdown", function unlock() {
     audioCtx();
@@ -1069,7 +1141,7 @@
     b.textContent = "⭐";
     card.appendChild(b);
     setMsg(["Great job!", "You did it!", "Super sound!", "Wow!", "Nice!"][Math.floor(Math.random() * 5)]);
-    chime("small");
+    greatSound();
     setTimeout(nextWord, 1100);
   }
 
@@ -1159,7 +1231,7 @@
     app.querySelector(".gift").classList.add("hidden");
     app.querySelector(".opened").classList.remove("hidden");
     app.querySelector(".actions").classList.remove("hidden");
-    chime("big");
+    if (theme().sfx === "flush") { whoosh(); setTimeout(() => chime("big"), 350); } else chime("big");
   }
 
   // ---------- Sticker book ----------

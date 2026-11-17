@@ -131,6 +131,7 @@ window.SOUNDS = {
         { w: "log", p: "🪵" },
       ]),
       lvl("middle", "Middle of words", "balloon, yellow", [
+        { w: "toilet", p: "🚽" },
         { w: "balloon", p: "🎈" },
         { w: "yellow", p: "💛" },
         { w: "hello", p: "👋" },
@@ -225,6 +226,7 @@ window.SOUNDS = {
         { w: "washing", p: "🧼" },
       ]),
       lvl("end", "End of words", "fish, brush", [
+        { w: "flush", p: "🚽" },
         { w: "fish", p: "🐟" },
         { w: "dish", p: "🍽️" },
         { w: "brush", p: "🪥" },
@@ -340,6 +342,7 @@ window.SOUNDS = {
         { pair: "back", pp: "🔙", w: "bag", p: "👜" },
       ]),
       lvl("start", "Start of words", "goat, gift", [
+        { w: "gadget", p: "🕹️" },
         { w: "goat", p: "🐐" },
         { w: "girl", p: "👧" },
         { w: "gift", p: "🎁" },
@@ -422,6 +425,7 @@ window.SOUNDS = {
         { w: "run", p: "🏃" },
       ]),
       lvl("middle", "Middle of words", "carrot, parrot", [
+        { w: "camera", p: "📷" },
         { w: "carrot", p: "🥕" },
         { w: "parrot", p: "🦜" },
         { w: "giraffe", p: "🦒" },
@@ -431,6 +435,7 @@ window.SOUNDS = {
         { w: "orange", p: "🍊" },
       ]),
       lvl("end", "End of words", "car, star", [
+        { w: "speaker", p: "🔊" },
         { w: "car", p: "🚗" },
         { w: "star", p: "⭐" },
         { w: "door", p: "🚪" },
@@ -583,6 +588,7 @@ window.SOUNDS = {
     coach: { pic: "🐍", how: "Snake sound first: sss", hint: "Then the rest: sss-top!", model: "sss", modelSay: "sssss" },
     levels: [
       lvl("start", "Start of words", "spoon, star, snake", [
+        { w: "speaker", p: "🔊" },
         { w: "spoon", p: "🥄" },
         { w: "spider", p: "🕷️" },
         { w: "star", p: "⭐" },
@@ -637,6 +643,12 @@ window.THEMES = {
     name: "Trains & trucks",
     mascot: "🚂",
     stickers: emojiList("🚂🚃🚄🚅🚆🚇🚈🚊🚝🚞🚋🚌🚎🚐🚑🚒🚓🚕🚗🚙🛻🚚🚛🚜🏎️🏍️🛵🚲🛴🚁🛩️✈️🚀🛸🚤⛵🚢🛶"),
+  },
+  toilets: {
+    name: "Toilets & gadgets",
+    mascot: "🚽",
+    sfx: "flush",   // a flush on ⭐ Great and a whoosh when the present opens
+    stickers: emojiList("🚽🧻🪠🫧🧼🛁🚿🪥📷📸📺🔊📻🎧🎤📱💻🕹️🤖🔋💡🛸🚀⚡💥🌀🪐🛰️"),
   },
   space: {
     name: "Space",
