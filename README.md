@@ -39,6 +39,12 @@ Tap ⏸️ to pause or finish early (he still gets the present). Choose 5, 10 or
 When the time for a block is up, he gets a warning first: a couple more words, "Two more, then break time!", with dots (● ● 🎈) in the top bar.
 During Practice time the grown-up row counts his tries, with an optional goal. Each session is listed in Grown-ups → Progress.
 
+### 🔧 Build-it
+A game for asking. Tap 🔧 **Build** on the home screen. He picks something to build (robot, rocket, train, fire truck, bathroom or cake),
+taps a part he wants, and gets it by asking for it: the grown-up taps ✅ **He asked!**. The iPad says it back ("Here's the wheel!").
+In Grown-ups → Build-it, choose how he asks ("wheel" → "want wheel" → "I want the wheel" → "Can I have the wheel, please?")
+and whether the iPad says it for him straight away or waits 5 seconds first. Progress shows how many things he asked for on his own.
+
 ### Break, All done and Quiet mode
 The card has two picture buttons for him: ✋ **Break** and 👋 **All done**. Either one pauses the game, says "Okay!", and lets
 the grown-up choose Keep going or Finish now (finishing still earns the present). Honouring them teaches him that asking works.

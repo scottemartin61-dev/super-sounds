@@ -54,6 +54,9 @@
     kidStop: true,      // show his own ✋ Break and 👋 All done buttons
     autoHear: true,     // play his voice back by itself after each try
     triesGoal: 0,       // tries per Practice time to aim for (0 = no goal)
+    buildBtn: true,     // show the 🔧 Build-it button on the home screen
+    buildLevel: "want", // how he asks in Build-it: word / want / iwant / please
+    buildModel: "first",// Build-it: say the phrase for him straight away ("first") or wait 5 seconds ("wait")
   };
   // How loud (RMS) counts as a "big voice" for each meter setting.
   const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
@@ -87,6 +90,9 @@
     oneOf("fxVol", [0.35, 0.65, 1]);
     oneOf("greatFx", ["every", "third", "none"]);
     oneOf("triesGoal", [0, 50, 75, 100]);
+    oneOf("buildLevel", ["word", "want", "iwant", "please"]);
+    oneOf("buildModel", ["first", "wait"]);
+    d.builds = Array.isArray(d.builds) ? d.builds : [];   // finished Build-it games
     d.tries = d.tries || {};         // "2026-11-17" -> tries (Great or Again taps) that day
     return d;
   }
@@ -967,6 +973,11 @@
     if (screen === "grown" && name !== "grown") { stopGrownRecord(); stopSpeaking(); clearPendingPhoto(); }
     if (name === "grown" && screen === "sounds") { screen = name; render(); scrollToId("sounds-panel"); return; }
     if ((screen === "warm" || screen === "brk") && name !== screen) { if (session) session.tok++; stopSpeaking(); }
+    if (screen === "build" && name !== "build") {
+      if (build) { clearTimeout(build.timer); build.tok++; }
+      build = null;
+      stopSpeaking();
+    }
     screen = name;
     render();
     window.scrollTo(0, 0);
@@ -979,7 +990,7 @@
 
   function render() {
     ({ home: renderHome, play: renderPlay, reward: renderReward, book: renderBook, grown: renderGrown, sounds: renderSounds,
-      spick: renderSessionPick, warm: renderWarm, brk: renderBreak })[screen]();
+      spick: renderSessionPick, warm: renderWarm, brk: renderBreak, bpick: renderBuildPick, build: renderBuild })[screen]();
   }
 
   // ---------- Home ----------
@@ -1012,7 +1023,8 @@
           ? `<div class="tiles">${tiles}</div>`
           : `<p class="empty-note">A grown-up needs to turn on a sound in the Grown-ups area.</p>`}
         <footer class="home-bottom">
-          <button class="pill" data-act="book">📖 Sticker book</button>
+          <button class="pill" data-act="book">📖<span class="wide-only"> Sticker</span> book</button>
+          ${S().buildBtn ? `<button class="pill" data-act="b-open" aria-label="Build-it game">🔧 Build</button>` : ""}
           ${S().sessionBtn && on.length ? `<button class="pill main session-btn" data-act="s-open"
             aria-label="Practice time, ${sessionMins()} minutes">⏱️ ${sessionMins()} min<span class="wide-only"> practice</span></button>` : ""}
           <button class="pill hold" data-hold="grown" aria-label="Grown-ups: press and hold for 2 seconds">
@@ -1515,7 +1527,7 @@
   // The cover over the screen when it's paused. pauseKind: "pause" (grown-up ⏸️), "break" (his ✋) or "done" (his 👋).
   let pauseKind = "pause";
   const roundPaused = () => !!(round && !round.session && round.paused);
-  const anyPaused = () => !!(session && session.paused) || roundPaused();
+  const anyPaused = () => !!(session && session.paused) || roundPaused() || !!(screen === "build" && build && build.paused);
 
   function quietBtnHTML() {
     return `<button class="pill" data-act="quiet" aria-pressed="${!!S().quiet}">🤫 Quiet mode: ${S().quiet ? "on" : "off"}</button>`;
@@ -1568,6 +1580,12 @@
         resetRecording(); updateKidRow(); stopMirror();
       }
       showPauseCover();
+    } else if (screen === "build" && build && !build.done) {
+      build.paused = true;
+      build.tok++;
+      clearTimeout(build.timer);
+      stopSpeaking();
+      showPauseCover();
     } else return;
     // Let him know he was heard.
     if (kind === "break") say("Okay, break time.");
@@ -1576,6 +1594,14 @@
 
   function resumeAny() {
     if (session && session.paused) { resumeSession(); return; }
+    if (screen === "build" && build && build.paused) {
+      build.paused = false;
+      stopSpeaking();
+      const c = document.getElementById("pause-cover");
+      if (c) c.classList.add("hidden");
+      if (build.sel >= 0) modelPart();
+      return;
+    }
     if (!roundPaused()) return;
     round.paused = false;
     stopSpeaking();
@@ -1588,6 +1614,7 @@
   function finishAny() {
     stopSpeaking();
     if (session) { finishSessionNow(); return; }
+    if (build && screen === "build") { build.paused = false; finishBuild(); return; }
     if (round && screen === "play") { round.paused = false; finishRound(); }
   }
 
@@ -1774,18 +1801,205 @@
     }
   }
 
+  // =================================================================
+  //  🔧 Build-it: a game for asking. He picks something to build, taps a part he wants,
+  //  and gets it by asking for it. The grown-up taps ✅ when he asks at his level.
+  // =================================================================
+  const KITS = [
+    { id: "robot", e: "🤖", name: "robot", c: "#d9e8ff", d: "#3a6fc4",
+      parts: [["👀", "eyes", 1], ["🦾", "arm"], ["🦿", "leg"], ["🔋", "battery"], ["📡", "antenna"], ["⚙️", "gear"]] },
+    { id: "rocket", e: "🚀", name: "rocket", c: "#ffdcd2", d: "#c4472a",
+      parts: [["🔥", "fire"], ["🪟", "window"], ["⛽", "fuel"], ["🧑‍🚀", "astronaut"], ["⭐", "star"], ["🌙", "moon"]] },
+    { id: "train", e: "🚂", name: "train", c: "#d8f0d8", d: "#2f8a3f",
+      parts: [["🛞", "wheel"], ["🛤️", "track"], ["🚃", "carriage"], ["💨", "steam"], ["🔔", "bell"], ["🎫", "ticket"]] },
+    { id: "firetruck", e: "🚒", name: "fire truck", c: "#ffd6d6", d: "#c62828",
+      parts: [["🛞", "wheel"], ["🪜", "ladder"], ["🚨", "siren"], ["💧", "water"], ["🧑‍🚒", "firefighter"], ["🪖", "helmet"]] },
+    { id: "bathroom", e: "🚽", name: "bathroom", c: "#d6f1f5", d: "#2a8a9a",
+      parts: [["🧻", "paper"], ["🪠", "plunger"], ["🧼", "soap"], ["💧", "water"], ["🪥", "toothbrush"], ["🛁", "bath"]] },
+    { id: "cake", e: "🎂", name: "cake", c: "#ffe0ef", d: "#c2427e",
+      parts: [["🥚", "egg"], ["🥛", "milk"], ["🧈", "butter"], ["🍓", "strawberry"], ["🍫", "chocolate"], ["🕯️", "candle"]] },
+  ];
+  const BUILD_LEVELS = { word: "Word", want: "2 words", iwant: "Sentence", please: "Polite" };
+  const BUILD_WAIT_MS = 5000;
+  let build = null;
+
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  function phraseFor(w, lv = S().buildLevel) {
+    if (lv === "want") return `want ${w}`;
+    if (lv === "iwant") return `I want the ${w}`;
+    if (lv === "please") return `Can I have the ${w}, please?`;
+    return w;
+  }
+
+  function openBuildPick() {
+    show("bpick");
+    say("What shall we build?");
+  }
+
+  function renderBuildPick() {
+    const tiles = KITS.map((k) => `<button class="tile" style="--c:${k.c};--d:${k.d}" data-act="b-kit" data-kit="${k.id}"
+        aria-label="Build the ${esc(k.name)}">
+        <span class="tile-cue">${k.e}</span>
+        <span class="tile-letter long">${esc(cap(k.name))}</span>
+      </button>`).join("");
+    app.innerHTML = `
+      <div class="screen spick bpick">
+        <header class="book-head">
+          <button class="icon-btn" data-act="home" aria-label="Back">⬅️</button>
+          <h1>🔧 What shall we build?</h1>
+        </header>
+        <div class="tiles">${tiles}</div>
+      </div>`;
+  }
+
+  function startBuild(id) {
+    const kit = KITS.find((k) => k.id === id);
+    if (!kit) return;
+    build = { kit, got: [], sel: -1, modelled: false, asks: 0, own: 0, level: S().buildLevel,
+      paused: false, done: false, tok: 0, timer: 0, popped: -1 };
+    show("build");
+    buildSay([{ text: `Let's build the ${kit.name}! What do you want?` }]);
+  }
+
+  function buildSay(parts, onEnd) {
+    if (!build || build.paused) return;
+    const tok = ++build.tok;
+    speak(parts, () => { if (build && tok === build.tok && onEnd) onEnd(); });
+  }
+
+  // He taps the part he wants. Then he asks for it, with the iPad's help straight away or after a 5-second wait.
+  function pickPart(i) {
+    if (!build || build.done || build.paused || build.got.includes(i)) return;
+    clearTimeout(build.timer);
+    build.sel = i;
+    build.modelled = false;
+    updateBuild();
+    if (S().buildModel === "wait") {
+      stopSpeaking();
+      build.tok++;
+      build.timer = setTimeout(() => { if (build && build.sel === i && !build.paused) modelPart(); }, BUILD_WAIT_MS);
+    } else modelPart();
+  }
+
+  // The iPad says the phrase for him to copy.
+  function modelPart() {
+    if (!build || build.sel < 0 || build.done) return;
+    clearTimeout(build.timer);
+    build.modelled = true;
+    const ask = document.getElementById("build-ask");
+    if (ask) ask.innerHTML = askHTML();
+    buildSay([{ text: phraseFor(build.kit.parts[build.sel][1]) }]);
+  }
+
+  // He asked: he gets the part, and hears it said back ("Here's the wheel!").
+  function givePart() {
+    if (!build || build.sel < 0 || build.done) return;
+    clearTimeout(build.timer);
+    const i = build.sel;
+    const [, w, plural] = build.kit.parts[i];
+    build.got.push(i);
+    build.asks++;
+    if (!build.modelled) build.own++;
+    build.sel = -1;
+    build.popped = i;
+    save();
+    if (build.got.length === build.kit.parts.length) { completeBuild(); return; }
+    updateBuild();
+    chime("small");
+    buildSay([{ text: `${plural ? "Here are" : "Here's"} the ${w}!` }]);
+  }
+
+  function completeBuild() {
+    build.done = true;
+    build.tok++;
+    updateBuild();
+    const fx = stickerSfx(build.kit.e);
+    if (!(fx && playSfx(fx))) chime("big");
+    const name = build.kit.name;
+    setTimeout(() => buildSay([{ text: `You built the ${name}!` }]), 900);
+  }
+
+  function finishBuild() {
+    if (!build) return;
+    clearTimeout(build.timer);
+    build.tok++;
+    const b = build;
+    const log = { d: new Date().toISOString(), kit: b.kit.id, level: b.level, asks: b.asks, own: b.own,
+      parts: b.kit.parts.length, early: !b.done };
+    data.builds = data.builds.concat(log).slice(-60);
+    const dk = dayKey();
+    data.days[dk] = (data.days[dk] || 0) + 1;
+    reward = Object.assign(giveSticker(), { build: log });
+    build = null;
+    save();
+    show("reward");
+    chime("big");
+  }
+
+  function askHTML() {
+    const k = build.kit;
+    if (build.done) return `You built the ${esc(k.name)}! 🎉`;
+    if (build.sel < 0) return `<span class="ask-hint">What do you want? 👇</span>`;
+    const [e, w] = k.parts[build.sel];
+    const waiting = S().buildModel === "wait" && !build.modelled;
+    return `<span class="ask-e" aria-hidden="true">${e}</span>
+      <span class="ask-phrase">${waiting ? "Ask for it! 🗣️" : `“${esc(phraseFor(w))}”`}</span>`;
+  }
+
+  function renderBuild() {
+    const k = build.kit, n = k.parts.length, got = build.got.length, sel = build.sel >= 0;
+    const parts = k.parts.map(([e, w], i) => {
+      const has = build.got.includes(i);
+      return `<button class="part ${has ? "got" : ""} ${build.sel === i ? "sel" : ""} ${build.popped === i ? "pop" : ""}"
+          data-act="b-part" data-i="${i}" aria-label="${esc(w)}${has ? ", got it" : ""}">
+          <span class="part-e" aria-hidden="true">${e}</span><span class="part-w">${esc(w)}</span>
+        </button>`;
+    }).join("");
+    build.popped = -1;
+    app.innerHTML = `
+      <div class="screen build" style="--c:${k.c};--d:${k.d}">
+        <header class="topbar">
+          <button class="icon-btn" data-act="home" aria-label="Stop and go home">🏠</button>
+          <h1 class="build-title">🔧 ${esc(cap(k.name))}</h1>
+          <div class="stars" aria-label="${got} of ${n} parts">${got} / ${n}</div>
+        </header>
+        <main class="card build-card ${build.done ? "done" : ""}">
+          <div class="build-obj" style="--p:${(got / n).toFixed(2)}" aria-hidden="true">${k.e}</div>
+          <div class="build-ask" id="build-ask" aria-live="polite">${askHTML()}</div>
+          ${build.done ? "" : kidStopHTML()}
+        </main>
+        ${build.done
+          ? `<button class="gift build-gift" data-act="b-gift" aria-label="Open your present">🎁<small>Tap to open!</small></button>`
+          : `<section class="parts" aria-label="Parts">${parts}</section>
+        <section class="grown-row" aria-label="Grown-up buttons">
+          <span class="label">Grown-up:</span>
+          <button class="judge great" data-act="b-give" ${sel ? "" : "disabled"}>✅ He asked!</button>
+          <button class="judge again" data-act="b-say" ${sel ? "" : "disabled"}>🔊 Say it for him</button>
+        </section>`}
+        ${pauseHTML()}
+      </div>`;
+  }
+
+  function updateBuild() {
+    if (screen !== "build") return;
+    render();
+    app.querySelector(".screen").style.animation = "none";   // no fade on each tap
+  }
+
   // ---------- Reward ----------
   function renderReward() {
     const th = theme();
     const name = S().name.trim();
     const sess = reward.session;
+    const bld = reward.build;
     const g = sess ? sess.greats : round ? round.greats : 0;
     app.innerHTML = `
       <div class="screen reward">
         <div class="mascot bob" aria-hidden="true">${th.mascot}</div>
         <h1>You did it${name ? ", " + esc(name) : ""}!</h1>
         ${sess ? `<p class="sub">You practised for ${sess.mins < 1 ? "a little while" : Math.round(sess.mins) + " minute" + (Math.round(sess.mins) === 1 ? "" : "s")}!</p>` : ""}
-        <p class="sub">${sess && !sess.tries ? "Great listening!" : sess ? `${sess.tries} tr${sess.tries === 1 ? "y" : "ies"} · ⭐ ${g}` : g ? `You got ${"⭐".repeat(Math.min(g, 10))}` : "Great practising!"}</p>
+        <p class="sub">${bld ? (bld.asks ? `You asked for ${bld.asks} thing${bld.asks === 1 ? "" : "s"}!` : "Great building!")
+          : sess && !sess.tries ? "Great listening!" : sess ? `${sess.tries} tr${sess.tries === 1 ? "y" : "ies"} · ⭐ ${g}` : g ? `You got ${"⭐".repeat(Math.min(g, 10))}` : "Great practising!"}</p>
         <button class="gift" data-act="open" aria-label="Open your present">🎁<small>Tap to open!</small></button>
         <div class="opened hidden">
           <div class="new-sticker" aria-hidden="true">${reward.sticker}</div>
@@ -1794,7 +2008,8 @@
             : "You have every sticker! Amazing!"}</p>
         </div>
         <div class="actions hidden">
-          ${sess ? "" : `<button class="pill main" data-act="again-round">🔁 Play again</button>`}
+          ${bld ? `<button class="pill main" data-act="b-open">🔧 Build again</button>`
+            : sess ? "" : `<button class="pill main" data-act="again-round">🔁 Play again</button>`}
           <button class="pill" data-act="book">📖 Sticker book</button>
           <button class="pill" data-act="home">🏠 Home</button>
         </div>
@@ -1871,6 +2086,12 @@
       return `<tr><td>${esc(day)}</td><td>${esc(names)}</td><td>${x.mins} of ${x.plan} min${x.early ? " (stopped early)" : ""}</td>
         <td>${x.tries}${S().triesGoal && x.tries >= S().triesGoal ? " 🎯" : ""}</td><td>${x.tries ? Math.round((100 * x.greats) / x.tries) + "%" : "–"}</td></tr>`;
     });
+    const builds = data.builds.slice(-10).reverse().map((x) => {
+      const day = new Date(x.d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+      const kit = KITS.find((k) => k.id === x.kit);
+      return `<tr><td>${esc(day)}</td><td>${kit ? kit.e + " " + esc(kit.name) : esc(x.kit)}</td><td>${esc(BUILD_LEVELS[x.level] || x.level)}</td>
+        <td>${x.asks} of ${x.parts}${x.early ? " (stopped early)" : ""}</td><td>${x.own}</td></tr>`;
+    });
     let days = 0, rounds = 0, weekTries = 0;
     const perDay = [];
     for (let i = 6; i >= 0; i--) {
@@ -1894,6 +2115,10 @@
       ${sessions.length ? `<h3>Practice times</h3><table>
         <thead><tr><th>Day</th><th>Sounds</th><th>Time</th><th>Tries</th><th>Great</th></tr></thead>
         <tbody>${sessions.join("")}</tbody></table>` : ""}
+      ${builds.length ? `<h3>🔧 Build-it</h3><table>
+        <thead><tr><th>Day</th><th>Built</th><th>Level</th><th>Asks</th><th>On his own</th></tr></thead>
+        <tbody>${builds.join("")}</tbody></table>
+        <p class="note">"On his own" means he asked before the iPad said it for him. When that's most of his asks, try the next level.</p>` : ""}
       <p class="note">"Tries" counts every Great or Again tap. Skips aren't counted.${S().triesGoal ? ` 🎯 marks a Practice time that reached ${S().triesGoal} tries.` : ""}</p>`;
   }
 
@@ -2072,6 +2297,7 @@
                 After ${MAX_TRIES} tries it moves on by itself, so he never gets stuck.</li>
             <li>Every finished round earns a sticker, no matter how it went.</li>
             <li>For a longer session, tap ⏱️ <b>Practice time</b> on the home screen (see below).</li>
+            <li>🔧 <b>Build</b> is a game for asking for things (see below).</li>
           </ol>
           <p class="note">Stop while it's still fun. Judge only the target sound,
             not the rest of the word. If he sees a speech therapist, ask which level each sound should be on.</p>
@@ -2156,6 +2382,26 @@
         </section>
 
         <section class="panel">
+          <h2>🔧 Build-it</h2>
+          <p class="note">A game for asking. He picks something to build (robot, rocket, train, fire truck, bathroom, cake),
+            then taps a part he wants. He gets it by asking for it: you tap ✅ <b>He asked!</b> Any real try at his level counts,
+            and the iPad says it back ("Here's the wheel!"). It's about asking, not perfect speech.</p>
+          <div class="field">How he asks
+            ${radioGroup("buildLevel", [["word", "“wheel”"], ["want", "“want wheel”"], ["iwant", "“I want the wheel”"],
+              ["please", "“Can I have the wheel, please?”"]], st.buildLevel)}
+            <span class="note">Choose one step longer than he usually says now. Move up when he asks this way easily.</span>
+          </div>
+          <div class="field">Helping him
+            ${radioGroup("buildModel", [["first", "Say it for him straight away"], ["wait", "Wait 5 seconds first"]], st.buildModel)}
+            <span class="note">Waiting gives him a chance to ask on his own: look at him and wait expectantly.
+              Use "straight away" while the game is new, and "wait" once he knows it.</span>
+          </div>
+          <label class="toggle"><input type="checkbox" data-set="buildBtn" ${st.buildBtn ? "checked" : ""}>
+            Show the 🔧 Build button on his home screen</label>
+          <p class="note">Try it at home too: keep a snack or a toy piece in your hand until he asks for it, then give it straight away.</p>
+        </section>
+
+        <section class="panel">
           <h2>Game settings</h2>
           <div class="field">Words per round
             ${radioGroup("perRound", [[3, "3"], [5, "5"], [8, "8"]], st.perRound)}
@@ -2171,13 +2417,13 @@
             Hands-free: after the word is said, listen for him by itself (no need to tap My turn).
             It stops when he goes quiet, or after 6 seconds if he says nothing.</label>
           <label class="toggle"><input type="checkbox" data-set="kidStop" ${st.kidStop ? "checked" : ""}>
-            Show his own ✋ <b>Break</b> and 👋 <b>All done</b> buttons on the card. Either one pauses so you can choose
-            what to do. Honour them: it teaches him that asking works.</label>
+            <span>Show his own ✋ <b>Break</b> and 👋 <b>All done</b> buttons on the card. Either one pauses so you can choose
+            what to do. Honour them: it teaches him that asking works.</span></label>
           <label class="toggle"><input type="checkbox" data-set="autoHear" ${st.autoHear ? "checked" : ""}>
             Play his voice back by itself after each try. Turn off for quicker tries (👂 Hear me still works).</label>
           <label class="toggle"><input type="checkbox" data-set="quiet" ${st.quiet ? "checked" : ""}>
-            🤫 <b>Quiet mode</b>: no sound effects, no bouncing or pulsing, and a softer voice.
-            Also on the pause screen, for when it gets too much.</label>
+            <span>🤫 <b>Quiet mode</b>: no sound effects, no bouncing or pulsing, and a softer voice.
+            Also on the pause screen, for when it gets too much.</span></label>
           <label class="toggle"><input type="checkbox" data-set="sfx" ${st.sfx ? "checked" : ""}>
             Sound effects (chimes, flush, animal and vehicle sounds)</label>
           <div class="field">Sound effects volume
@@ -2231,11 +2477,12 @@
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
       case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree": case "realSounds":
-      case "kidStop": case "autoHear":
+      case "kidStop": case "autoHear": case "buildBtn":
         st[key] = el.checked; break;
       case "quiet": st.quiet = el.checked; applyQuiet(); break;
       case "warnWords": case "triesGoal": case "fxVol": st[key] = Number(el.value); break;
       case "greatFx": st.greatFx = el.value; break;
+      case "buildLevel": case "buildModel": st[key] = el.value; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
       case "sessionMins": {
         st.sessionMins = Number(el.value);
@@ -2273,6 +2520,12 @@
     "s-resume": () => resumeAny(),
     "s-finish": () => finishAny(),
     "kid-break": () => pauseAny("break"),
+    "b-open": () => openBuildPick(),
+    "b-kit": (b) => startBuild(b.dataset.kit),
+    "b-part": (b) => pickPart(Number(b.dataset.i)),
+    "b-give": () => givePart(),
+    "b-say": () => modelPart(),
+    "b-gift": () => finishBuild(),
     "kid-done": () => pauseAny("done"),
     quiet: () => {
       S().quiet = !S().quiet;
@@ -2385,6 +2638,7 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       if (inSession()) { pauseKind = "pause"; pauseSession(); }
+      if (screen === "build" && build && !build.paused && !build.done) pauseAny("pause");
       stopSpeaking();
       if (rec.state === "listening") { resetRecording(); updateKidRow(); }
       else if (rec.state === "recording") stopRecording();

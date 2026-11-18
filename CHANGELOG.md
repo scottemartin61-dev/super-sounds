@@ -3,6 +3,19 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v16 · 2026-11-17 · 🔧 Build-it, a game for asking
+- New **🔧 Build** button on the home screen. He picks something to build: 🤖 robot, 🚀 rocket, 🚂 train, 🚒 fire truck,
+  🚽 bathroom or 🎂 cake. Then he taps a part he wants (wheel, ladder, siren...) and gets it by **asking for it**.
+  The grown-up taps ✅ **He asked!** and the iPad says it back ("Here's the wheel!"). The picture fills in with colour
+  as the parts arrive, and the finished thing makes its sound (choo-choo, siren, flush, whoosh) before the 🎁 present.
+- Grown-ups → **🔧 Build-it** sets how he asks: "wheel", "want wheel", "I want the wheel" or
+  "Can I have the wheel, please?". It also sets whether the iPad says it for him straight away or waits 5 seconds first,
+  to give him a chance to ask on his own.
+- Grown-ups → Progress: a **Build-it** list showing what he built, the level, how many things he asked for, and how many he
+  asked for on his own (before the iPad said it).
+- ✋ Break and 👋 All done work in Build-it too.
+- Fixed: two Game settings (his Break / All done buttons, Quiet mode) showed their text in narrow columns.
+
 ## v15 · 2026-11-17 · Calmer changes, Quiet mode, his own Break button
 Based on a research review of home speech practice for young children.
 - **Warning before each change in Practice time.** When the time is up he finishes a few more words first, and hears

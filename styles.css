@@ -505,6 +505,37 @@ button:focus-visible { outline: 4px solid #6aa9ff; outline-offset: 3px; }
 .pause-box .pill { width: 100%; }
 .pause-box .pill.main { background: var(--great); font-size: 24px; }
 
+/* ---------------- Build-it ---------------- */
+.build-title { flex: 1; text-align: center; font-size: clamp(24px, 4.4vmin, 38px); }
+.build-card { justify-content: center; gap: 8px; }
+.build-obj {
+  font-size: clamp(110px, 22vmin, 190px); line-height: 1.05;
+  filter: grayscale(calc(1 - var(--p))); opacity: calc(0.3 + 0.7 * var(--p));
+  transition: filter 0.4s, opacity 0.4s;
+}
+.build-card.done .build-obj { animation: bob 1.6s ease-in-out infinite; }
+.build-ask {
+  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; text-align: center;
+  font-size: clamp(22px, 3.8vmin, 34px); font-weight: 800; min-height: 1.4em;
+}
+.build-ask .ask-e { font-size: 1.5em; line-height: 1; }
+.build-ask .ask-hint { color: var(--muted); }
+.parts { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(8px, 1.6vmin, 14px); }
+.part {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-height: clamp(92px, 14vmin, 132px); border-radius: var(--radius); background: var(--card);
+  box-shadow: var(--shadow); border: 4px solid transparent; padding: 4px;
+}
+.part-e { font-size: clamp(40px, 7vmin, 62px); line-height: 1.1; }
+.part-w { font-size: clamp(15px, 2.4vmin, 20px); font-weight: 700; }
+.part.sel { border-color: var(--d); background: var(--c); animation: pulse 1.6s ease-in-out infinite; }
+.part.got { opacity: 0.4; filter: grayscale(0.6); box-shadow: none; }
+.part.got::after { content: "✓"; position: absolute; top: 4px; right: 8px; font-weight: 900; font-size: 20px; color: var(--d); }
+.part.pop .part-e { animation: pop 0.5s cubic-bezier(.2, 1.6, .4, 1) both; }
+.build-gift { align-self: center; }
+.bpick .tiles { grid-template-columns: repeat(3, 1fr); }
+.bpick .tile { min-height: clamp(130px, 22vmin, 200px); }
+
 /* ---------------- Sticker book ---------------- */
 .book-head { display: flex; align-items: center; gap: 14px; }
 .book-head h1 { font-size: clamp(28px, 5vmin, 44px); flex: 1; }
@@ -770,6 +801,11 @@ th { color: var(--muted); font-weight: 700; }
   .kid-stop { top: 8px; right: 8px; gap: 6px; }
   .kid-stop-btn { width: 50px; height: 50px; font-size: 22px; border-radius: 16px; }
   .kid-stop-btn small { font-size: 9px; margin-top: 1px; }
+  .build-card { padding-top: 54px; }
+  .part { min-height: 86px; }
+  .part-w { font-size: 14px; }
+  .bpick .tiles { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .bpick .tile { min-height: 120px; }
 }
 
 /* Phone, sideways: short screen, so the play screen goes side by side */
@@ -890,6 +926,25 @@ th { color: var(--muted); font-weight: 700; }
   .kid-stop { top: 6px; right: 6px; gap: 6px; }
   .kid-stop-btn { width: 44px; height: 44px; font-size: 20px; border-radius: 14px; }
   .kid-stop-btn small { font-size: 8px; margin-top: 1px; }
+
+  /* Build-it: the thing on the left, parts and grown-up buttons on the right */
+  .build.screen {
+    display: grid; grid-template-columns: 1fr 1.3fr; grid-template-rows: auto 1fr auto;
+    grid-template-areas: "top top" "card parts" "card grown"; column-gap: 12px; row-gap: 8px; max-width: none;
+  }
+  .build .topbar { grid-area: top; }
+  .build .card { grid-area: card; min-height: 0; padding: 8px 12px; border-radius: 24px; gap: 4px; }
+  .build .parts { grid-area: parts; gap: 8px; }
+  .build .grown-row { grid-area: grown; gap: 6px; padding: 6px; }
+  .build .build-gift { grid-area: parts; }
+  .build-title { font-size: 22px; }
+  .build-obj { font-size: 28vh; }
+  .build-ask { font-size: 17px; gap: 6px; }
+  .part { min-height: 0; border-width: 3px; border-radius: 18px; }
+  .part-e { font-size: 32px; }
+  .part-w { font-size: 13px; }
+  .bpick .tiles { grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .bpick .tile { min-height: 110px; }
 }
 
 /* Small phone, upright (iPhone SE and similar) */
