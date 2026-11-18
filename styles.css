@@ -692,6 +692,25 @@ th { color: var(--muted); font-weight: 700; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .hold.holding::before { width: 100%; }
 }
+/* Quiet mode: the same, switched on by a grown-up */
+.quiet *, .quiet *::before, .quiet *::after { animation: none !important; transition: none !important; }
+
+/* His own Break / All done buttons, in the top corner of the card */
+.kid-stop { position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; z-index: 3; }
+.kid-stop-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 66px; height: 66px; padding: 0; border-radius: 20px; border: 3px solid var(--line);
+  background: var(--bg); font-size: 30px; line-height: 1; box-shadow: none;
+}
+.kid-stop-btn small { font-size: 11px; font-weight: 800; color: var(--muted); margin-top: 3px; white-space: nowrap; }
+.wdots { letter-spacing: 3px; color: var(--d, var(--great-dark)); font-size: 1.1em; }
+.tdays { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.tday {
+  display: flex; flex-direction: column; align-items: center; min-width: 44px; padding: 4px 6px;
+  border-radius: 12px; background: var(--card); box-shadow: var(--shadow); font-weight: 800;
+}
+.tday small { font-size: 12px; color: var(--muted); font-weight: 700; }
+.tday.none { opacity: 0.55; box-shadow: none; }
 
 @media (max-width: 560px) {
   .judge { font-size: 19px; padding: 0 14px; }
@@ -748,6 +767,9 @@ th { color: var(--muted); font-weight: 700; }
   .sstep { font-size: 22px; padding: 4px; }
   .s-side small { font-size: 12px; }
   .move { padding: 10px 16px; gap: 10px; }
+  .kid-stop { top: 8px; right: 8px; gap: 6px; }
+  .kid-stop-btn { width: 50px; height: 50px; font-size: 22px; border-radius: 16px; }
+  .kid-stop-btn small { font-size: 9px; margin-top: 1px; }
 }
 
 /* Phone, sideways: short screen, so the play screen goes side by side */
@@ -863,6 +885,11 @@ th { color: var(--muted); font-weight: 700; }
   .brk .go { font-size: 20px; }
   .pause-box { padding: 14px 20px; gap: 8px; }
   .pause-box .mascot { font-size: 40px; }
+  .pause-box h2 { font-size: 24px; }
+  .pause-box .pill { min-height: 40px; }
+  .kid-stop { top: 6px; right: 6px; gap: 6px; }
+  .kid-stop-btn { width: 44px; height: 44px; font-size: 20px; border-radius: 14px; }
+  .kid-stop-btn small { font-size: 8px; margin-top: 1px; }
 }
 
 /* Small phone, upright (iPhone SE and similar) */

@@ -47,6 +47,13 @@
     sessionMins: 15,    // Practice time length (5 / 10 / 15)
     sessionBtn: true,   // show the Practice time button on the home screen
     sessionPicks: [],   // sounds picked last time for Practice time
+    warnWords: 2,       // Practice time: words of warning before each change ("2 more, then 🎈"); 0 = off
+    quiet: false,       // Quiet mode: no sound effects or animations, softer voice
+    fxVol: 1,           // sound effects volume (0.35 / 0.65 / 1)
+    greatFx: "every",   // sound on ⭐ Great: every / third / none
+    kidStop: true,      // show his own ✋ Break and 👋 All done buttons
+    autoHear: true,     // play his voice back by itself after each try
+    triesGoal: 0,       // tries per Practice time to aim for (0 = no goal)
   };
   // How loud (RMS) counts as a "big voice" for each meter setting.
   const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
@@ -75,6 +82,12 @@
     d.days = d.days || {};           // "2026-11-17" -> rounds finished
     d.sessions = Array.isArray(d.sessions) ? d.sessions : [];   // finished Practice times
     if (!Array.isArray(d.settings.sessionPicks)) d.settings.sessionPicks = [];
+    const oneOf = (k, list) => { if (!list.includes(d.settings[k])) d.settings[k] = DEFAULT_SETTINGS[k]; };
+    oneOf("warnWords", [0, 1, 2, 3]);
+    oneOf("fxVol", [0.35, 0.65, 1]);
+    oneOf("greatFx", ["every", "third", "none"]);
+    oneOf("triesGoal", [0, 50, 75, 100]);
+    d.tries = d.tries || {};         // "2026-11-17" -> tries (Great or Again taps) that day
     return d;
   }
 
@@ -214,6 +227,7 @@
     u.lang = voice ? voice.lang : "en-US";
     u.rate = rate || S().rate;
     u.pitch = 1.05;
+    u.volume = S().quiet ? 0.6 : 1;
     if (onEnd) { u.onend = onEnd; u.onerror = onEnd; }
     speechSynthesis.speak(u);
   }
@@ -241,8 +255,17 @@
     return actx;
   }
 
+  // All sound effects go through one volume control, and Quiet mode turns them off.
+  const fxOn = () => S().sfx && !S().quiet;
+  let fxNode = null;
+  function fxOut(ctx) {
+    if (!fxNode || fxNode.context !== ctx) { fxNode = ctx.createGain(); fxNode.connect(ctx.destination); }
+    fxNode.gain.value = Number(S().fxVol) || 1;
+    return fxNode;
+  }
+
   function chime(kind = "small") {
-    if (!S().sfx) return;
+    if (!fxOn()) return;
     const ctx = audioCtx();
     if (!ctx) return;
     const notes = kind === "big" ? [523.25, 659.25, 783.99, 1046.5] : [659.25, 987.77];
@@ -254,7 +277,7 @@
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(0.14, t + 0.02);
       g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
-      o.connect(g).connect(ctx.destination);
+      o.connect(g).connect(fxOut(ctx));
       o.start(t);
       o.stop(t + 0.75);
     });
@@ -270,7 +293,7 @@
 
   // Toilet theme: a gentle cartoon flush (swirling water, then a few bubbles).
   function flush() {
-    if (!S().sfx) return;
+    if (!fxOn()) return;
     const ctx = audioCtx();
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -286,7 +309,7 @@
     g.gain.linearRampToValueAtTime(0.22, t + 0.12);
     g.gain.setValueAtTime(0.22, t + 0.5);
     g.gain.exponentialRampToValueAtTime(0.001, t + 1.25);
-    src.connect(bp).connect(g).connect(ctx.destination);
+    src.connect(bp).connect(g).connect(fxOut(ctx));
     src.start(t);
     src.stop(t + 1.3);
     // bubbles
@@ -299,7 +322,7 @@
       og.gain.setValueAtTime(0, s);
       og.gain.linearRampToValueAtTime(0.12, s + 0.01);
       og.gain.exponentialRampToValueAtTime(0.001, s + 0.1);
-      o.connect(og).connect(ctx.destination);
+      o.connect(og).connect(fxOut(ctx));
       o.start(s);
       o.stop(s + 0.12);
     });
@@ -307,7 +330,7 @@
 
   // Toilet theme: a quick whoosh when the present opens.
   function whoosh() {
-    if (!S().sfx) return;
+    if (!fxOn()) return;
     const ctx = audioCtx();
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -322,7 +345,7 @@
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(0.25, t + 0.2);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
-    src.connect(f).connect(g).connect(ctx.destination);
+    src.connect(f).connect(g).connect(fxOut(ctx));
     src.start(t);
     src.stop(t + 0.6);
   }
@@ -331,7 +354,7 @@
   const SFX = window.SFX || {};
   const STICKER_SFX = window.STICKER_SFX || {};
   const sfxBufs = new Map();    // name -> AudioBuffer (or a Promise while loading)
-  const realOn = () => S().sfx && S().realSounds;
+  const realOn = () => fxOn() && S().realSounds;
   const stickerSfx = (emoji) => STICKER_SFX[String(emoji).replace(/\uFE0F/g, "")] || null;
 
   function loadSfx(name) {
@@ -359,7 +382,7 @@
       const src = ctx.createBufferSource(), g = ctx.createGain();
       src.buffer = buf;
       g.gain.value = 0.7;
-      src.connect(g).connect(ctx.destination);
+      src.connect(g).connect(fxOut(ctx));
       src.start();
     };
     const have = sfxBufs.get(name);
@@ -370,11 +393,20 @@
   // Load them all in the background after the first tap (about 240 KB, and kept offline).
   function preloadSfx() { Object.keys(SFX).forEach((n) => loadSfx(n)); }
 
-  // The "well done" sound for the current sticker theme.
+  // The "well done" sound for the current sticker theme: every Great, every 3rd, or none.
+  // Returns true if it played.
+  let greatN = 0;
   function greatSound() {
+    greatN++;
+    const g = S().greatFx;
+    if (!fxOn() || g === "none" || (g === "third" && greatN % 3)) return false;
     if (theme().sfx === "flush") { if (!playSfx("flush")) flush(); }
     else chime("small");
+    return true;
   }
+
+  // Quiet mode also stops the bouncing and pulsing.
+  function applyQuiet() { document.body.classList.toggle("quiet", !!S().quiet); }
 
   // iOS only allows sound after the first touch — unlock both on first tap.
   document.addEventListener("pointerdown", function unlock() {
@@ -443,7 +475,9 @@
     const ctx = audioCtx();
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(ctx.destination);
+    const g = ctx.createGain();
+    g.gain.value = S().quiet ? 0.6 : 1;
+    src.connect(g).connect(ctx.destination);
     src.onended = () => { if (voices.src === src) voices.src = null; onEnd && onEnd(); };
     voices.src = src;
     src.start();
@@ -627,12 +661,12 @@
       if (!rec.url) return;
       // Trim the silence before he spoke so "Hear me" starts right at his word.
       const ctx = audioCtx();
-      if (!ctx || !blob.arrayBuffer) { playBack(); return; }
+      if (!ctx || !blob.arrayBuffer) { if (S().autoHear) playBack(); return; }
       blob.arrayBuffer()
         .then((ab) => decodeAudio(ctx, ab))
         .then((b) => { if (token === rec.token) rec.clip = tidyClip(ctx, b); })
         .catch(() => {})
-        .then(() => { if (token === rec.token && rec.url) playBack(); });
+        .then(() => { if (token === rec.token && rec.url && S().autoHear) playBack(); });
     };
     rec.mr.start();
     rec.state = hands ? "listening" : "recording";
@@ -1018,7 +1052,7 @@
     const level = S().sounds[sound].level;
     const items = pickWords(sound, level, S().perRound);
     if (!items.length) { toast("No words for this level yet."); return; }
-    round = { sound, level, items, idx: 0, tries: 0, greats: 0, busy: false, sayTok: 0, coach: 0 };
+    round = { sound, level, items, paused: false, idx: 0, tries: 0, greats: 0, busy: false, sayTok: 0, coach: 0 };
     show("play");
     if (S().autoSay) sayCurrent(); // called inside the tap so iOS allows it
   }
@@ -1095,6 +1129,7 @@
 
   function sayCurrent() {
     if (round.session && (!session || session.paused)) return;
+    if (roundPaused()) return;
     const item = currentItem();
     const btn = app.querySelector('[data-act="listen"]');
     btn && btn.classList.add("active");
@@ -1138,6 +1173,7 @@
           ${mic && S().voiceMeter ? `<div class="meter hidden" aria-hidden="true">
             <span>🔈</span><div class="meter-track"><div class="meter-fill"></div></div><span>📣</span></div>` : ""}
           <div class="msg" id="msg" aria-live="polite"></div>
+          ${kidStopHTML()}
         </main>
         <section class="coach" id="coach" aria-label="How to make the sound" ${round.coach ? "" : "hidden"}>${round.coach ? coachHTML() : ""}</section>
         <section class="kid-row ${mic ? "" : "two"}">
@@ -1147,12 +1183,12 @@
           <button class="big-btn" data-act="hear" disabled><span class="ico">👂</span>Hear me</button>` : ""}
         </section>
         <section class="grown-row" aria-label="Grown-up buttons">
-          <span class="label">Grown-up:</span>
+          <span class="label">Grown-up${round.session ? ` · <span id="tries-n">${triesText()}</span>` : ""}:</span>
           <button class="judge great" data-act="great">⭐ Great!</button>
           <button class="judge again" data-act="again">🔁 Again</button>
           <button class="judge skip" data-act="skip">Skip ➜</button>
         </section>
-        ${round.session ? pauseHTML() : ""}
+        ${pauseHTML()}
       </div>`;
     updateKidRow();
     updateMirror();
@@ -1185,7 +1221,14 @@
     const st = (data.stats[k] = data.stats[k] || { t: 0, g: 0 });
     st.t++;
     if (great) st.g++;
-    if (round.session && session) { session.tries++; if (great) session.greats++; }
+    if (round.session && session) {
+      session.tries++;
+      if (great) session.greats++;
+      const n = document.getElementById("tries-n");
+      if (n) n.textContent = triesText();
+    }
+    const dk = dayKey();
+    data.tries[dk] = (data.tries[dk] || 0) + 1;
     save();
   }
 
@@ -1206,8 +1249,8 @@
     b.textContent = "⭐";
     card.appendChild(b);
     setMsg(["Great job!", "You did it!", "Super sound!", "Wow!", "Nice!"][Math.floor(Math.random() * 5)]);
-    greatSound();
-    setTimeout(nextWord, theme().sfx === "flush" ? 1400 : 1100);   // let the flush finish first
+    const played = greatSound();
+    setTimeout(nextWord, played && theme().sfx === "flush" ? 1400 : 1100);   // let the flush finish first
   }
 
   function onAgain() {
@@ -1239,6 +1282,7 @@
   function nextWord() {
     if (screen !== "play") return;
     if (round.session && session && session.paused) { session.resumeNext = true; return; }
+    if (roundPaused()) { round.resumeNext = true; return; }
     resetRecording();
     round.idx++;
     round.tries = 0;
@@ -1247,7 +1291,16 @@
     round.busy = false;
     if (round.session) {
       if (!session) return;
-      if (blockDone()) { nextBlock(); return; }
+      // When time's up he gets a warning first: "Two more, then break time!" (Grown-ups → Practice time).
+      if (session.left != null) {
+        session.left--;
+        if (session.left <= 0) { nextBlock(); return; }
+        if (session.left === 1) round.intro = `Last one, then ${nextName()}!`;
+      } else if (blockDone()) {
+        if (!warnN()) { nextBlock(); return; }
+        session.left = warnN();
+        round.intro = session.left === 1 ? `Last one, then ${nextName()}!` : `${NUM[session.left]} more, then ${nextName()}!`;
+      }
       if (round.idx >= round.items.length) {
         const more = sessionItems(block().sounds, 10);
         round.meta.push(...more);
@@ -1257,6 +1310,8 @@
       round.level = round.meta[round.idx].lv;
     } else if (round.idx >= round.items.length) { finishRound(); return; }
     render();
+    if (round.session && session && session.left != null)
+      setMsg(`${session.left === 1 ? "Last one" : session.left + " more"}, then ${nextIcon()}`);
     if (S().autoSay) setTimeout(() => { if (screen === "play") sayCurrent(); }, 350);
   }
 
@@ -1319,7 +1374,18 @@
     for (let i = session.bi + 1; i < session.blocks.length; i++) ms += blockMs(session.blocks[i]);
     return Math.ceil(ms / 60000);
   }
-  const leftText = () => { const m = minsLeft(); return m <= 0 ? "Almost done" : `${m} min left`; };
+  const NUM = { 2: "Two", 3: "Three" };
+  const warnN = () => Number(S().warnWords) || 0;
+  const nextBlockOf = () => session.blocks[session.bi + 1];
+  const nextName = () => { const n = nextBlockOf(); return !n ? "your present" : n.t === "break" ? "break time" : "your turn"; };
+  const nextIcon = () => { const n = nextBlockOf(); return n ? BLOCK_ICON[n.t] : "🎁"; };
+  // Minutes left, or the words left once the warning has started (● ● → 🎈).
+  const leftText = () => {
+    if (session.left != null) return `<span class="wdots" aria-label="${session.left} more">${"●".repeat(session.left)}</span> ${nextIcon()}`;
+    const m = minsLeft();
+    return m <= 0 ? "Almost done" : `${m} min left`;
+  };
+  const triesText = () => `${session.tries}${S().triesGoal ? " of " + S().triesGoal : ""} tr${session.tries === 1 && !S().triesGoal ? "y" : "ies"}`;
   const blockPct = () => Math.min(100, (100 * blockElapsed()) / blockMs(block()));
 
   // Words for a block: n for each sound, taken in turn (A, B, A, B...).
@@ -1393,7 +1459,7 @@
     const blocks = plan.map(([t, m]) => ({ t, m, sounds: t === "practice" && twoTurns ? [keys[pi++ % keys.length]] : keys.slice() }));
     if (session) clearInterval(session.timer);
     session = { mins, keys, blocks, bi: -1, acc: 0, runStart: 0, doneMs: 0, tries: 0, greats: 0,
-      paused: false, resumeNext: false, early: false, tok: 0, timer: setInterval(tickSession, 500) };
+      paused: false, resumeNext: false, early: false, tok: 0, left: null, timer: setInterval(tickSession, 500) };
     nextBlock();
   }
 
@@ -1402,6 +1468,7 @@
     if (session.bi >= 0) session.doneMs += block().t === "break" ? Math.min(blockElapsed(), blockMs(block())) : blockElapsed();
     session.bi++;
     session.acc = 0;
+    session.left = null;
     session.runStart = performance.now();
     if (session.bi >= session.blocks.length) { finishSession(); return; }
     const b = block();
@@ -1415,7 +1482,7 @@
     const f = document.getElementById("s-fill");
     if (f) f.style.width = blockPct() + "%";
     const l = document.getElementById("s-left");
-    if (l) l.textContent = leftText();
+    if (l) l.innerHTML = leftText();
     if (screen === "brk") tickBreak();
   }
 
@@ -1436,16 +1503,92 @@
       </header>`;
   }
 
-  function pauseHTML() {
-    return `<div class="pause-cover ${session && session.paused ? "" : "hidden"}" id="pause-cover">
-        <div class="pause-box">
+  // His own ✋ Break and 👋 All done buttons, in the corner of the card.
+  function kidStopHTML() {
+    if (!S().kidStop) return "";
+    return `<div class="kid-stop">
+        <button class="kid-stop-btn" data-act="kid-break" aria-label="I need a break">✋<small>Break</small></button>
+        <button class="kid-stop-btn" data-act="kid-done" aria-label="I'm all done">👋<small>All done</small></button>
+      </div>`;
+  }
+
+  // The cover over the screen when it's paused. pauseKind: "pause" (grown-up ⏸️), "break" (his ✋) or "done" (his 👋).
+  let pauseKind = "pause";
+  const roundPaused = () => !!(round && !round.session && round.paused);
+  const anyPaused = () => !!(session && session.paused) || roundPaused();
+
+  function quietBtnHTML() {
+    return `<button class="pill" data-act="quiet" aria-pressed="${!!S().quiet}">🤫 Quiet mode: ${S().quiet ? "on" : "off"}</button>`;
+  }
+
+  function pauseBoxHTML() {
+    const timed = !!session;
+    const go = (main) => `<button class="pill ${main ? "main" : ""}" data-act="s-resume">▶️ Keep going</button>`;
+    const fin = (main) => `<button class="pill ${main ? "main" : ""}" data-act="s-finish">🏁 Finish now</button>`;
+    const so = timed && session.tries ? ` ${session.tries} tr${session.tries === 1 ? "y" : "ies"} so far.` : "";
+    if (pauseKind === "done") return `
+          <div class="mascot" aria-hidden="true">👋</div>
+          <h2>All done?</h2>
+          <p class="note">He asked to stop. That's fine: finishing now still earns the present.${so}</p>
+          ${fin(true)}${go(false)}${quietBtnHTML()}`;
+    if (pauseKind === "break") return `
+          <div class="mascot" aria-hidden="true">✋</div>
+          <h2>Break time</h2>
+          <p class="note">He asked for a break.${timed ? " The timer has stopped." : ""} Take as long as he needs.${so}</p>
+          ${go(true)}${fin(false)}${quietBtnHTML()}`;
+    return `
           <div class="mascot" aria-hidden="true">${theme().mascot}</div>
           <h2>Paused</h2>
-          <p class="note">The timer has stopped. Stopping early is always fine.</p>
-          <button class="pill main" data-act="s-resume">▶️ Keep going</button>
-          <button class="pill" data-act="s-finish">🏁 Finish now</button>
-        </div>
+          <p class="note">${timed ? "The timer has stopped. " : ""}Stopping early is always fine.${so}</p>
+          ${go(true)}${fin(false)}${quietBtnHTML()}`;
+  }
+
+  function pauseHTML() {
+    return `<div class="pause-cover ${anyPaused() ? "" : "hidden"}" id="pause-cover">
+        <div class="pause-box">${pauseBoxHTML()}</div>
       </div>`;
+  }
+
+  function showPauseCover() {
+    const c = document.getElementById("pause-cover");
+    if (!c) return;
+    c.querySelector(".pause-box").innerHTML = pauseBoxHTML();
+    c.classList.remove("hidden");
+  }
+
+  function pauseAny(kind) {
+    pauseKind = kind;
+    if (inSession()) pauseSession();
+    else if (screen === "play" && round && !round.session) {
+      if (!round.paused) {
+        round.paused = true;
+        round.sayTok++;
+        stopSpeaking();
+        player.pause();
+        resetRecording(); updateKidRow(); stopMirror();
+      }
+      showPauseCover();
+    } else return;
+    // Let him know he was heard.
+    if (kind === "break") say("Okay, break time.");
+    else if (kind === "done") say("Okay! All done.");
+  }
+
+  function resumeAny() {
+    if (session && session.paused) { resumeSession(); return; }
+    if (!roundPaused()) return;
+    round.paused = false;
+    stopSpeaking();
+    const c = document.getElementById("pause-cover");
+    if (c) c.classList.add("hidden");
+    if (round.resumeNext) { round.resumeNext = false; nextWord(); return; }
+    if (!round.busy) sayCurrent();
+  }
+
+  function finishAny() {
+    stopSpeaking();
+    if (session) { finishSessionNow(); return; }
+    if (round && screen === "play") { round.paused = false; finishRound(); }
   }
 
   function pauseSession() {
@@ -1458,14 +1601,14 @@
     stopSpeaking();
     player.pause();
     if (screen === "play") { resetRecording(); updateKidRow(); stopMirror(); }
-    const c = document.getElementById("pause-cover");
-    if (c) c.classList.remove("hidden");
+    showPauseCover();
   }
 
   function resumeSession() {
     if (!session || !session.paused) return;
     session.paused = false;
     session.runStart = performance.now();
+    stopSpeaking();
     const c = document.getElementById("pause-cover");
     if (c) c.classList.add("hidden");
     if (session.resumeNext) { session.resumeNext = false; nextWord(); return; }
@@ -1514,7 +1657,9 @@
     const ok = () => session && tok === session.tok && screen === "warm" && !session.paused;
     const btn = app.querySelector('[data-act="warm-again"]');
     btn && btn.classList.add("active");
-    speak([{ text: item.w, say: item.say }], () => {
+    const parts = [{ text: item.w, say: item.say }];
+    if (session.warm.intro) { parts.unshift({ text: session.warm.intro }); session.warm.intro = null; }
+    speak(parts, () => {
       btn && btn.classList.remove("active");
       if (ok()) setTimeout(() => { if (ok()) warmNext(); }, 1400);
     });
@@ -1523,8 +1668,9 @@
   function warmNext() {
     if (!session || screen !== "warm") return;
     session.tok++;
-    if (blockDone()) { nextBlock(); return; }
+    if (session.left != null || (blockDone() && !warnN())) { nextBlock(); return; }
     const w = session.warm;
+    if (blockDone()) { session.left = 1; w.intro = `Last one, then ${nextName()}!`; }
     w.idx++;
     if (w.idx >= w.list.length) w.list.push(...sessionItems(block().sounds, 12));
     render();
@@ -1542,7 +1688,8 @@
           ${item.pair ? `<div class="pair"><span aria-hidden="true">${item.pp}</span> ${esc(item.pair)} <span class="arrow">➜</span></div>` : ""}
           <div class="pic" aria-hidden="true">${picHTML(item)}</div>
           <div class="word ${item.w.length > 12 ? "long" : ""}">${highlightItem(k, item)}</div>
-          <div class="msg">Listen for the ${esc(s.label)} sound 👂</div>
+          <div class="msg">${session.left != null ? `Last one, then ${nextIcon()}` : `Listen for the ${esc(s.label)} sound 👂`}</div>
+          ${kidStopHTML()}
         </main>
         <section class="kid-row two">
           <button class="big-btn" data-act="warm-again"><span class="ico">🔊</span>Again</button>
@@ -1722,18 +1869,24 @@
       const day = new Date(x.d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
       const names = x.sounds.map((k) => (SOUNDS[k] ? SOUNDS[k].label : k)).join(", ");
       return `<tr><td>${esc(day)}</td><td>${esc(names)}</td><td>${x.mins} of ${x.plan} min${x.early ? " (stopped early)" : ""}</td>
-        <td>${x.tries}</td><td>${x.tries ? Math.round((100 * x.greats) / x.tries) + "%" : "–"}</td></tr>`;
+        <td>${x.tries}${S().triesGoal && x.tries >= S().triesGoal ? " 🎯" : ""}</td><td>${x.tries ? Math.round((100 * x.greats) / x.tries) + "%" : "–"}</td></tr>`;
     });
-    let days = 0, rounds = 0;
-    for (let i = 0; i < 7; i++) {
+    let days = 0, rounds = 0, weekTries = 0;
+    const perDay = [];
+    for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const n = data.days[dayKey(d)] || 0;
+      const t = data.tries[dayKey(d)] || 0;
       if (n) { days++; rounds += n; }
+      weekTries += t;
+      perDay.push(`<span class="tday ${t ? "" : "none"}"><small>${esc(d.toLocaleDateString(undefined, { weekday: "short" }))}</small>${t || "–"}</span>`);
     }
     return `
-      <p><b>This week:</b> practised on ${days} of the last 7 days (${rounds} round${rounds === 1 ? "" : "s"}).
+      <p><b>This week:</b> practised on ${days} of the last 7 days (${rounds} round${rounds === 1 ? "" : "s"}),
+         <b>${weekTries} tr${weekTries === 1 ? "y" : "ies"}</b>.
          <b>Stars:</b> ${data.stars}. <b>Stickers:</b> ${collected().length} of ${theme().stickers.length}.</p>
+      <div class="field">Tries each day (last 7 days)<div class="tdays">${perDay.join("")}</div></div>
       ${rows.length ? `<table>
         <thead><tr><th>Sound</th><th>Level</th><th>Tries</th><th>Great</th></tr></thead>
         <tbody>${rows.join("")}</tbody></table>` : `<p class="note">No practice recorded yet.</p>`}
@@ -1741,7 +1894,7 @@
       ${sessions.length ? `<h3>Practice times</h3><table>
         <thead><tr><th>Day</th><th>Sounds</th><th>Time</th><th>Tries</th><th>Great</th></tr></thead>
         <tbody>${sessions.join("")}</tbody></table>` : ""}
-      <p class="note">"Tries" counts every Great or Again tap. Skips aren't counted.</p>`;
+      <p class="note">"Tries" counts every Great or Again tap. Skips aren't counted.${S().triesGoal ? ` 🎯 marks a Practice time that reached ${S().triesGoal} tries.` : ""}</p>`;
   }
 
   // ---------- Grown-ups: My words & grown-up voice sections ----------
@@ -1989,6 +2142,16 @@
           </div>
           <label class="toggle"><input type="checkbox" data-set="sessionBtn" ${st.sessionBtn ? "checked" : ""}>
             Show the ⏱️ Practice time button on his home screen</label>
+          <div class="field">Warn before each change
+            ${radioGroup("warnWords", [[0, "Off"], [1, "1 word"], [2, "2 words"], [3, "3 words"]], st.warnWords)}
+            <span class="note">When the time is up, he finishes a few more words first and hears "Two more, then break time!".
+              The top bar shows them as dots: ● ● 🎈. Changes he can see coming are easier.</span>
+          </div>
+          <div class="field">Tries goal for each Practice time
+            ${radioGroup("triesGoal", [[0, "None"], [50, "50"], [75, "75"], [100, "100"]], st.triesGoal)}
+            <span class="note">The count shows next to "Grown-up" during Practice time and in Progress. Research sessions
+              often aim for about 100 tries, but ask his speech therapist what suits him.</span>
+          </div>
           <p class="note">Ask his speech therapist how long home practice should be. Short, regular practice usually works best.</p>
         </section>
 
@@ -2007,8 +2170,22 @@
           <label class="toggle"><input type="checkbox" data-set="handsFree" ${st.handsFree ? "checked" : ""}>
             Hands-free: after the word is said, listen for him by itself (no need to tap My turn).
             It stops when he goes quiet, or after 6 seconds if he says nothing.</label>
+          <label class="toggle"><input type="checkbox" data-set="kidStop" ${st.kidStop ? "checked" : ""}>
+            Show his own ✋ <b>Break</b> and 👋 <b>All done</b> buttons on the card. Either one pauses so you can choose
+            what to do. Honour them: it teaches him that asking works.</label>
+          <label class="toggle"><input type="checkbox" data-set="autoHear" ${st.autoHear ? "checked" : ""}>
+            Play his voice back by itself after each try. Turn off for quicker tries (👂 Hear me still works).</label>
+          <label class="toggle"><input type="checkbox" data-set="quiet" ${st.quiet ? "checked" : ""}>
+            🤫 <b>Quiet mode</b>: no sound effects, no bouncing or pulsing, and a softer voice.
+            Also on the pause screen, for when it gets too much.</label>
           <label class="toggle"><input type="checkbox" data-set="sfx" ${st.sfx ? "checked" : ""}>
             Sound effects (chimes, flush, animal and vehicle sounds)</label>
+          <div class="field">Sound effects volume
+            ${radioGroup("fxVol", [[0.35, "Soft"], [0.65, "Medium"], [1, "Full"]], st.fxVol)}
+          </div>
+          <div class="field">Sound on ⭐ Great (chime or flush)
+            ${radioGroup("greatFx", [["every", "Every time"], ["third", "Every 3rd"], ["none", "Only at the present"]], st.greatFx)}
+          </div>
           <label class="toggle"><input type="checkbox" data-set="realSounds" ${st.realSounds ? "checked" : ""}>
             Real recorded sounds: stickers moo, whistle and beep when he finds them or taps them in his book.
             Turn off if any are too much for him.</label>
@@ -2054,7 +2231,11 @@
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
       case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree": case "realSounds":
+      case "kidStop": case "autoHear":
         st[key] = el.checked; break;
+      case "quiet": st.quiet = el.checked; applyQuiet(); break;
+      case "warnWords": case "triesGoal": case "fxVol": st[key] = Number(el.value); break;
+      case "greatFx": st.greatFx = el.value; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
       case "sessionMins": {
         st.sessionMins = Number(el.value);
@@ -2088,9 +2269,17 @@
     "s-open": () => openSessionPick(),
     "s-pick": (b) => togglePick(b.dataset.sound),
     "s-start": () => startSession(),
-    "s-pause": () => pauseSession(),
-    "s-resume": () => resumeSession(),
-    "s-finish": () => finishSessionNow(),
+    "s-pause": () => pauseAny("pause"),
+    "s-resume": () => resumeAny(),
+    "s-finish": () => finishAny(),
+    "kid-break": () => pauseAny("break"),
+    "kid-done": () => pauseAny("done"),
+    quiet: () => {
+      S().quiet = !S().quiet;
+      save();
+      applyQuiet();
+      app.querySelectorAll('[data-act="quiet"]').forEach((b) => { b.outerHTML = quietBtnHTML(); });
+    },
     "warm-again": () => { if (session) { session.tok++; warmSay(); } },
     "warm-next": () => warmNext(),
     "block-skip": () => { if (session) { session.tok++; stopSpeaking(); nextBlock(); } },
@@ -2195,7 +2384,7 @@
   // Stop the mic and voice if the app goes to the background.
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      if (inSession()) pauseSession();
+      if (inSession()) { pauseKind = "pause"; pauseSession(); }
       stopSpeaking();
       if (rec.state === "listening") { resetRecording(); updateKidRow(); }
       else if (rec.state === "recording") stopRecording();
@@ -2207,6 +2396,7 @@
   // =================================================================
   //  Start
   // =================================================================
+  applyQuiet();
   render();
 
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {

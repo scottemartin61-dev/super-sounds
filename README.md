@@ -36,13 +36,21 @@ A timed session in short blocks, like a speech therapy session. Tap ⏱️ on th
 A 15-minute session goes 👂 listen (2 min) → 🗣️ his turn (6 min) → 🎈 wiggle break with a sticker (1 min) → 🗣️ his turn (6 min) → 🎁 present.
 With two sounds he does one before the break and one after. A strip at the top shows where he is and the minutes left.
 Tap ⏸️ to pause or finish early (he still gets the present). Choose 5, 10 or 15 minutes in Grown-ups → Practice time.
-Each session is listed in Grown-ups → Progress.
+When the time for a block is up, he gets a warning first: a couple more words, "Two more, then break time!", with dots (● ● 🎈) in the top bar.
+During Practice time the grown-up row counts his tries, with an optional goal. Each session is listed in Grown-ups → Progress.
+
+### Break, All done and Quiet mode
+The card has two picture buttons for him: ✋ **Break** and 👋 **All done**. Either one pauses the game, says "Okay!", and lets
+the grown-up choose Keep going or Finish now (finishing still earns the present). Honouring them teaches him that asking works.
+🤫 **Quiet mode** (on the pause screen, or in Grown-ups) turns off sound effects and animations and softens the voice.
+Grown-ups → Game settings also sets the effects volume and whether ⭐ Great plays a sound every time, every 3rd time or only at the present.
 
 The **Grown-ups** button on the home screen only opens if you press and hold it for 2 seconds. In there you can set:
 - his name and sticker theme
 - which sounds show and the level for each one (e.g. just the sound → start / middle / end of words → sentences)
 - words per round, talking speed, microphone, chimes
-- how long Practice time lasts (5, 10 or 15 minutes)
+- how long Practice time lasts (5, 10 or 15 minutes), the warning before each change, and a tries goal
+- Quiet mode, effects volume, his Break / All done buttons, and whether his voice plays back after each try
 - the big-voice meter, and how loud counts as a big voice (Easy / Medium / Hard)
 
 It also has coaching tips for each sound and his progress (tries, % great, tricky words, days practised, Practice times).

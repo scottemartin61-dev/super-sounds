@@ -3,6 +3,23 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v15 · 2026-11-17 · Calmer changes, Quiet mode, his own Break button
+Based on a research review of home speech practice for young children.
+- **Warning before each change in Practice time.** When the time is up he finishes a few more words first, and hears
+  "Two more, then break time!" or "Last one, then your present!". The top bar shows the words left as dots (● ● 🎈).
+  The listening warm-up ends with "Last one, then your turn!". Choose 1, 2 or 3 words, or Off, in Grown-ups → Practice time.
+- **🤫 Quiet mode**: no sound effects, no bouncing or pulsing, and a softer voice. Turn it on from the pause screen when it gets
+  too much, or in Grown-ups → Game settings.
+- **Sound effects volume** (Soft / Medium / Full) and **sound on ⭐ Great** (every time / every 3rd / only at the present),
+  so the flush doesn't have to play 30 times a session.
+- **His own ✋ Break and 👋 All done buttons** in the corner of the card, in normal rounds and Practice time. Either one
+  pauses, says "Okay, break time." or "Okay! All done.", and lets the grown-up choose Keep going or Finish now.
+  Finishing still earns the present. Normal rounds can now be paused too. Hide the buttons in Grown-ups → Game settings.
+- **Tries count**: during Practice time the grown-up row shows "Grown-up · 23 tries", or "23 of 50 tries" with a goal set in
+  Grown-ups → Practice time (None / 50 / 75 / 100). Progress shows tries for each of the last 7 days, and 🎯 marks
+  sessions that reached the goal.
+- New setting: **play his voice back by itself** after each try (on by default). Turn it off for quicker tries.
+
 ## v14 · 2026-11-17 · ⏱️ Practice time (15-minute sessions)
 - New **⏱️ Practice time** button on the home screen for a timed session, like his speech therapy sessions.
   Pick 1 or 2 sounds, then tap ▶️ Start. A 15-minute session runs in short blocks:
