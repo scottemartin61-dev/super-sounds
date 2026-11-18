@@ -78,6 +78,12 @@ Stickers like 🐮 🚂 📷 make a real recorded sound when he finds them, and 
 The toilet theme flushes on ⭐ Great. You can switch these off in Grown-ups → Game settings, and test each one there first.
 The sounds are free public-domain recordings from BigSoundBank.com ([CREDITS.md](CREDITS.md)).
 
+### 🎙️ Voice report (optional, off by default)
+Grown-ups → 🎙️ Voice report → **Save his tries for a voice report** keeps his judged tries on the iPad with only the word,
+sound, level, your ⭐/🔁 and the day. No name, and My words are never saved. **📤 Export for report** makes one .zip to copy
+to a computer, where a separate offline tool (not in this repo) transcribes the clips and writes a report for his parents.
+**🗑 Delete saved tries** clears them from the iPad. Ask his parents before turning it on: it's his voice.
+
 ## Putting it on his iPad
 The app has to be online at an `https://` address. The microphone only works over https.
 
@@ -105,6 +111,7 @@ python -m http.server 8080
 Then open http://localhost:8080.
 
 ## Privacy
-There are no accounts, ads or tracking. His recordings are kept in memory only and deleted when he moves to the next word.
+There are no accounts, ads or tracking. His recordings are kept in memory only and deleted when he moves to the next word,
+unless a grown-up turns on 🎙️ Voice report. Then his tries stay on the iPad until they're exported or deleted.
 Grown-up recordings, My words and their photos are saved on the iPad until you delete them.
 Everything else (settings, stars, stickers, progress) stays in the iPad's local storage too.

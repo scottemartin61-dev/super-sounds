@@ -57,6 +57,7 @@
     buildBtn: true,     // show the 🔧 Build-it button on the home screen
     buildLevel: "want", // how he asks in Build-it: word / want / iwant / please
     buildModel: "first",// Build-it: say the phrase for him straight away ("first") or wait 5 seconds ("wait")
+    saveTries: false,   // Voice report: keep his tries (anonymous) on this device until a grown-up exports them
   };
   // How loud (RMS) counts as a "big voice" for each meter setting.
   const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
@@ -110,11 +111,12 @@
     if (!dbPromise) {
       dbPromise = new Promise((resolve, reject) => {
         if (!window.indexedDB) { reject(new Error("No storage")); return; }
-        const req = indexedDB.open("superSounds", 1);
+        const req = indexedDB.open("superSounds", 2);
         req.onupgradeneeded = () => {
           const d = req.result;
           if (!d.objectStoreNames.contains("audio")) d.createObjectStore("audio");
           if (!d.objectStoreNames.contains("photos")) d.createObjectStore("photos");
+          if (!d.objectStoreNames.contains("tries")) d.createObjectStore("tries");   // Voice report clips
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
@@ -661,6 +663,8 @@
       if (rec.url) URL.revokeObjectURL(rec.url);
       const blob = new Blob(rec.chunks, { type: (rec.mr && rec.mr.mimeType) || type || "audio/mp4" });
       rec.url = blob.size ? URL.createObjectURL(blob) : null;
+      rec.blob = blob.size ? blob : null;
+      rec.blobSaved = false;
       rec.clip = null;
       rec.state = rec.url ? "done" : "idle";
       updateKidRow();
@@ -790,6 +794,7 @@
     player.removeAttribute("src");
     if (rec.url) URL.revokeObjectURL(rec.url);
     rec.url = null;
+    rec.blob = null;
     rec.state = "idle";
   }
 
@@ -974,6 +979,7 @@
     if (name === "grown" && screen === "sounds") { screen = name; render(); scrollToId("sounds-panel"); return; }
     if ((screen === "warm" || screen === "brk") && name !== screen) { if (session) session.tok++; stopSpeaking(); }
     if (screen === "build" && name !== "build") {
+      stopBuildRec(true);
       if (build) { clearTimeout(build.timer); build.tok++; }
       build = null;
       stopSpeaking();
@@ -989,6 +995,7 @@
   }
 
   function render() {
+    if (screen === "grown") setTimeout(refreshTriesCount, 0);
     ({ home: renderHome, play: renderPlay, reward: renderReward, book: renderBook, grown: renderGrown, sounds: renderSounds,
       spick: renderSessionPick, warm: renderWarm, brk: renderBreak, bpick: renderBuildPick, build: renderBuild })[screen]();
   }
@@ -1061,6 +1068,7 @@
   }
 
   function startRound(sound) {
+    newTrySession();
     const level = S().sounds[sound].level;
     const items = pickWords(sound, level, S().perRound);
     if (!items.length) { toast("No words for this level yet."); return; }
@@ -1242,6 +1250,12 @@
     const dk = dayKey();
     data.tries[dk] = (data.tries[dk] || 0) + 1;
     save();
+    if (S().saveTries && rec.blob && !rec.blobSaved && !item.mine) {
+      rec.blobSaved = true;
+      saveTry(rec.blob, { game: round.session ? "practice" : "round", sound: round.sound, level: round.level,
+        soundName: SOUNDS[round.sound].label, levelName: (findLevel(round.sound, round.level) || {}).name || round.level,
+        target: item.w, pair: item.pair || null, mark: great ? "great" : "again", help: round.coach || 0 });
+    }
   }
 
   function onGreat() {
@@ -1462,6 +1476,7 @@
 
   // ---------- Running the session ----------
   function startSession() {
+    newTrySession();
     const keys = sessionPicks.filter((k) => S().sounds[k] && S().sounds[k].on);
     if (!keys.length) return;
     const mins = sessionMins();
@@ -1584,6 +1599,7 @@
       build.paused = true;
       build.tok++;
       clearTimeout(build.timer);
+      stopBuildRec(true);
       stopSpeaking();
       showPauseCover();
     } else return;
@@ -1855,6 +1871,7 @@
   function startBuild(id) {
     const kit = KITS.find((k) => k.id === id);
     if (!kit) return;
+    newTrySession();
     build = { kit, got: [], sel: -1, modelled: false, asks: 0, own: 0, level: S().buildLevel,
       paused: false, done: false, tok: 0, timer: 0, popped: -1 };
     show("build");
@@ -1874,9 +1891,11 @@
     build.sel = i;
     build.modelled = false;
     updateBuild();
+    stopBuildRec(true);
     if (S().buildModel === "wait") {
       stopSpeaking();
       build.tok++;
+      startBuildRec();
       build.timer = setTimeout(() => { if (build && build.sel === i && !build.paused) modelPart(); }, BUILD_WAIT_MS);
     } else modelPart();
   }
@@ -1888,7 +1907,8 @@
     build.modelled = true;
     const ask = document.getElementById("build-ask");
     if (ask) ask.innerHTML = askHTML();
-    buildSay([{ text: phraseFor(build.kit.parts[build.sel][1]) }]);
+    stopBuildRec(true);   // don't record the iPad's own voice
+    buildSay([{ text: phraseFor(build.kit.parts[build.sel][1]) }], () => startBuildRec());
   }
 
   // He asked: he gets the part, and hears it said back ("Here's the wheel!").
@@ -1897,6 +1917,10 @@
     clearTimeout(build.timer);
     const i = build.sel;
     const [, w, plural] = build.kit.parts[i];
+    const meta = { game: "build", sound: null, level: build.level, levelName: BUILD_LEVELS[build.level], kit: build.kit.id,
+      kitName: build.kit.name, part: w,
+      target: phraseFor(w, build.level), mark: "given", help: build.modelled ? 1 : 0 };
+    stopBuildRec(false, (blob) => { if (blob) saveTry(blob, meta); });
     build.got.push(i);
     build.asks++;
     if (!build.modelled) build.own++;
@@ -1985,6 +2009,184 @@
     render();
     app.querySelector(".screen").style.animation = "none";   // no fade on each tap
   }
+
+  // =================================================================
+  //  🎙️ Voice report (optional, off by default).
+  //  His judged tries are kept on this device with only: the word, sound, level, the grown-up's mark,
+  //  the day and a random session number. No name, no device details, never My words.
+  //  A grown-up exports them as one .zip for the report tool on their own computer.
+  // =================================================================
+  const MAX_SAVED_TRIES = 1500;
+  let trySess = "", tryN = 0, savedFull = false;
+  const randId = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => (b % 36).toString(36)).join("");
+  function newTrySession() { trySess = randId(6); tryN = 0; }
+
+  // Mono 16 kHz WAV (what speech-to-text wants), with a little silence at each end and no hidden file details.
+  function toWav16k(buf) {
+    const src = buf.getChannelData(0), ratio = buf.sampleRate / 16000;
+    const pad = 4800, n = Math.max(1, Math.floor(src.length / ratio)), total = n + pad * 2;
+    const dv = new DataView(new ArrayBuffer(44 + total * 2));
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, "RIFF"); dv.setUint32(4, 36 + total * 2, true); str(8, "WAVE"); str(12, "fmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    str(36, "data"); dv.setUint32(40, total * 2, true);
+    for (let i = 0; i < n; i++) {
+      const a = Math.floor(i * ratio), b = Math.min(src.length, Math.max(a + 1, Math.floor((i + 1) * ratio)));
+      let s = 0;
+      for (let j = a; j < b; j++) s += src[j];
+      const v = Math.max(-1, Math.min(1, s / (b - a)));
+      dv.setInt16(44 + (pad + i) * 2, v * 32767, true);
+    }
+    return dv.buffer;
+  }
+
+  async function saveTry(blob, meta) {
+    if (!S().saveTries || savedFull) return;
+    try {
+      const ctx = audioCtx();
+      if (!ctx) return;
+      const keys = await idbKeys("tries");
+      if (keys.length >= MAX_SAVED_TRIES) { savedFull = true; toast("Voice report is full. A grown-up can export and delete saved tries."); return; }
+      const buf = tidyClip(ctx, await decodeAudio(ctx, await blob.arrayBuffer()));
+      if (!trySess) newTrySession();
+      const id = randId(10);
+      const m = Object.assign({ id, s: trySess, n: ++tryN, day: dayKey() }, meta);
+      await idbPut("tries", id, { meta: m, wav: toWav16k(buf) });
+    } catch (e) { /* a try that can't be saved is simply skipped */ }
+  }
+
+  // Build-it has no "My turn" button, so with Voice report on it records quietly while he asks.
+  const bRec = { mr: null, chunks: [], blob: null, timer: 0, tok: 0, onDone: null };
+  async function startBuildRec() {
+    if (!S().saveTries || !S().mic || !canRecord() || !build || build.paused || build.sel < 0) return;
+    const tok = ++bRec.tok;
+    bRec.blob = null;
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+    catch (e) { return; }
+    if (tok !== bRec.tok || !build || build.paused) { stream.getTracks().forEach((t) => t.stop()); return; }
+    const type = pickAudioType();
+    let mr;
+    try { mr = new MediaRecorder(stream, type ? { mimeType: type } : undefined); }
+    catch (e) { stream.getTracks().forEach((t) => t.stop()); return; }
+    bRec.mr = mr;
+    bRec.chunks = [];
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) bRec.chunks.push(e.data); };
+    mr.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      if (tok !== bRec.tok) return;
+      const b = new Blob(bRec.chunks, { type: mr.mimeType || type || "audio/mp4" });
+      bRec.blob = b.size ? b : null;
+      if (bRec.onDone) { const f = bRec.onDone; bRec.onDone = null; f(bRec.blob); }
+    };
+    mr.start();
+    bRec.timer = setTimeout(() => { if (mr.state === "recording") mr.stop(); }, 10000);
+  }
+  // discard: throw the recording away. Otherwise onDone(blob) gets it once it has stopped.
+  function stopBuildRec(discard, onDone) {
+    clearTimeout(bRec.timer);
+    const mr = bRec.mr;
+    bRec.mr = null;
+    if (discard) {
+      bRec.tok++;
+      bRec.blob = null;
+      bRec.onDone = null;
+      if (mr && mr.state === "recording") { try { mr.stop(); } catch (e) {} }
+      return;
+    }
+    if (mr && mr.state === "recording") { bRec.onDone = onDone || null; try { mr.stop(); } catch (e) {} }
+    else if (onDone) { const b = bRec.blob; bRec.blob = null; onDone(b); }
+  }
+
+  // ---------- Export: one .zip (manifest.json + clips/*.wav), no compression ----------
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(u8) {
+    let c = 0xffffffff;
+    for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function makeZip(files) {   // files: [{name, data: Uint8Array}]
+    const parts = [], central = [];
+    let offset = 0;
+    const enc = new TextEncoder();
+    for (const f of files) {
+      const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(8, 0, true);
+      h.setUint16(10, 0, true); h.setUint16(12, 0x21, true);   // time 00:00, date 1980-01-01 (no real timestamps)
+      h.setUint32(14, crc, true); h.setUint32(18, size, true); h.setUint32(22, size, true);
+      h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+      parts.push(new Uint8Array(h.buffer), name, f.data);
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true);
+      c.setUint16(12, 0, true); c.setUint16(14, 0x21, true);
+      c.setUint32(16, crc, true); c.setUint32(20, size, true); c.setUint32(24, size, true);
+      c.setUint16(28, name.length, true); c.setUint32(42, offset, true);
+      central.push(new Uint8Array(c.buffer), name);
+      offset += 30 + name.length + size;
+    }
+    const cdSize = central.reduce((a, b) => a + b.length, 0);
+    const e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+    e.setUint32(12, cdSize, true); e.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: "application/zip" });
+  }
+
+  async function savedTries() {
+    const keys = await idbKeys("tries");
+    const out = [];
+    for (const k of keys) { const v = await idbGet("tries", k); if (v && v.meta && v.wav) out.push(v); }
+    out.sort((a, b) => (a.meta.day + a.meta.s + String(a.meta.n).padStart(5, "0")).localeCompare(b.meta.day + b.meta.s + String(b.meta.n).padStart(5, "0")));
+    return out;
+  }
+
+  async function buildTriesZip() {
+    const list = await savedTries();
+    if (!list.length) return null;
+    const manifest = { app: "Super Sounds", format: 1, exported: dayKey(),
+      note: "Anonymous practice tries. No names. 'target' is the word he was practising; 'mark' is the grown-up's judgement.",
+      clips: list.map((x) => Object.assign({ file: `clips/${x.meta.id}.wav` }, x.meta)) };
+    const files = [{ name: "manifest.json", data: new TextEncoder().encode(JSON.stringify(manifest, null, 1)) }]
+      .concat(list.map((x) => ({ name: `clips/${x.meta.id}.wav`, data: new Uint8Array(x.wav) })));
+    return { blob: makeZip(files), count: list.length };
+  }
+
+  async function exportTries() {
+    let z;
+    try { z = await buildTriesZip(); } catch (e) { toast("Couldn't read the saved tries."); return; }
+    if (!z) { toast("No saved tries yet."); return; }
+    const name = `super-sounds-tries-${dayKey()}.zip`;
+    const file = new File([z.blob], name, { type: "application/zip" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: "Super Sounds tries" }); toast(`Exported ${z.count} tries.`); }
+      catch (e) { if (e && e.name !== "AbortError") toast("Sharing didn't work. Try again."); }
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    toast(`Exported ${z.count} tries.`);
+  }
+
+  async function refreshTriesCount() {
+    const el = document.getElementById("tries-saved");
+    if (!el) return;
+    try {
+      const list = await savedTries();
+      const mb = list.reduce((a, x) => a + x.wav.byteLength, 0) / 1048576;
+      el.innerHTML = `<b>${list.length}</b> tr${list.length === 1 ? "y" : "ies"} saved on this iPad (${mb.toFixed(1)} MB).`;
+    } catch (e) { el.textContent = "Saved tries can't be read on this device."; }
+  }
+
+  if (new URLSearchParams(location.search).has("test")) window.__ssTest = { saveTry, buildTriesZip, newTrySession };   // for testing only
 
   // ---------- Reward ----------
   function renderReward() {
@@ -2450,14 +2652,32 @@
         </section>
 
         <section class="panel">
+          <h2>🎙️ Voice report (optional)</h2>
+          <p class="note">Keep his tries so a report tool on your computer can listen to them and write a report on how he did.
+            Each try is saved on this iPad with only the word he was practising, the sound and level, your ⭐ or 🔁 and the day.
+            No name and no device details, and <b>My words are never saved</b> (they can include family names).
+            In Build-it, it also records him while he asks. Ask his parents first: it's his voice.</p>
+          <label class="toggle"><input type="checkbox" data-set="saveTries" ${st.saveTries ? "checked" : ""}>
+            <span>Save his tries for a voice report</span></label>
+          <p class="note" id="tries-saved">Counting saved tries…</p>
+          <div class="actions" style="justify-content:flex-start">
+            <button class="pill" data-act="tries-export">📤 Export for report</button>
+            <button class="pill danger" data-act="tries-delete">🗑 Delete saved tries</button>
+          </div>
+          <p class="note">Export makes one .zip file and opens the Share menu. Get it to the <b>inbox</b> folder
+            inside <b>Super Sounds Reports</b> on your computer (USB cable, or a cloud drive folder that syncs to the computer),
+            then run <b>/speech-report</b> in Claude there. Delete the tries here once the report is made.</p>
+        </section>
+
+        <section class="panel">
           <h2>Progress</h2>
           ${statsHTML()}
         </section>
 
         <section class="panel">
           <h2>Privacy &amp; reset</h2>
-          <p class="note">Everything stays on this iPad. His own recordings are never saved: each one is deleted as
-            soon as he moves to the next word. Grown-up recordings and My words photos are kept on this iPad until
+          <p class="note">Everything stays on this iPad. His own recordings are not saved: each one is deleted as
+            soon as he moves to the next word, unless you turn on 🎙️ Voice report. Then his tries stay on this iPad until you export or delete them. Grown-up recordings and My words photos are kept on this iPad until
             you delete them (deleting the app from the Home Screen erases them too). No accounts, ads or tracking.</p>
           <div class="actions" style="justify-content:flex-start">
             <button class="pill danger" data-act="reset-progress">Reset progress &amp; stars</button>
@@ -2477,7 +2697,7 @@
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
       case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree": case "realSounds":
-      case "kidStop": case "autoHear": case "buildBtn":
+      case "kidStop": case "autoHear": case "buildBtn": case "saveTries":
         st[key] = el.checked; break;
       case "quiet": st.quiet = el.checked; applyQuiet(); break;
       case "warnWords": case "triesGoal": case "fxVol": st[key] = Number(el.value); break;
@@ -2526,6 +2746,18 @@
     "b-give": () => givePart(),
     "b-say": () => modelPart(),
     "b-gift": () => finishBuild(),
+    "tries-export": () => exportTries(),
+    "tries-delete": async () => {
+      let n = 0;
+      try { n = (await idbKeys("tries")).length; } catch (e) {}
+      if (!n) { toast("No saved tries."); return; }
+      if (confirm(`Delete all ${n} saved tries from this iPad? Export them first if you want a report. This can't be undone.`)) {
+        try { await idbClear("tries"); } catch (e) {}
+        savedFull = false;
+        refreshTriesCount();
+        toast("Saved tries deleted.");
+      }
+    },
     "kid-done": () => pauseAny("done"),
     quiet: () => {
       S().quiet = !S().quiet;

@@ -3,6 +3,16 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v17 · 2026-11-18 · 🎙️ Voice report (optional, off by default)
+- New Grown-ups → **🎙️ Voice report**. With **Save his tries for a voice report** on, each judged try is kept on the iPad
+  with only the practice word, sound, level, the grown-up's ⭐/🔁, the day and a random session number.
+  No name, no device details, and **My words are never saved**, since they can include family names.
+  In Build-it it also records him quietly while he asks (never the iPad's own voice).
+- **📤 Export for report** makes one .zip file (plain audio clips + a list) and opens the Share menu, to move it to a computer.
+  **🗑 Delete saved tries** clears them. With the setting off, nothing changes: his recordings are still deleted after each word.
+- The report itself is made on the grown-up's own computer, with tools kept outside this repo: speech-to-text runs offline there,
+  and the report uses the grown-up's ⭐/🔁 marks for sound accuracy.
+
 ## v16 · 2026-11-17 · 🔧 Build-it, a game for asking
 - New **🔧 Build** button on the home screen. He picks something to build: 🤖 robot, 🚀 rocket, 🚂 train, 🚒 fire truck,
   🚽 bathroom or 🎂 cake. Then he taps a part he wants (wheel, ladder, siren...) and gets it by **asking for it**.
