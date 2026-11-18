@@ -31,13 +31,21 @@ Only the sounds a grown-up ticks show on his home screen. New sounds live in [wo
    - 3rd miss: the game moves on by itself.
 4. After 5 words he opens a 🎁 and gets a new sticker for his book, every time.
 
+### ⏱️ Practice time
+A timed session in short blocks, like a speech therapy session. Tap ⏱️ on the home screen, pick 1 or 2 sounds, and tap ▶️ Start.
+A 15-minute session goes 👂 listen (2 min) → 🗣️ his turn (6 min) → 🎈 wiggle break with a sticker (1 min) → 🗣️ his turn (6 min) → 🎁 present.
+With two sounds he does one before the break and one after. A strip at the top shows where he is and the minutes left.
+Tap ⏸️ to pause or finish early (he still gets the present). Choose 5, 10 or 15 minutes in Grown-ups → Practice time.
+Each session is listed in Grown-ups → Progress.
+
 The **Grown-ups** button on the home screen only opens if you press and hold it for 2 seconds. In there you can set:
 - his name and sticker theme
 - which sounds show and the level for each one (e.g. just the sound → start / middle / end of words → sentences)
 - words per round, talking speed, microphone, chimes
+- how long Practice time lasts (5, 10 or 15 minutes)
 - the big-voice meter, and how loud counts as a big voice (Easy / Medium / Hard)
 
-It also has coaching tips for each sound and his progress (tries, % great, tricky words, days practised).
+It also has coaching tips for each sound and his progress (tries, % great, tricky words, days practised, Practice times).
 
 ### My words
 Add words from his own life (family names, pets, toys, foods) with an emoji or a photo.

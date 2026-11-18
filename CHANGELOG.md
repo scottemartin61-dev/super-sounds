@@ -3,6 +3,21 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v14 · 2026-11-17 · ⏱️ Practice time (15-minute sessions)
+- New **⏱️ Practice time** button on the home screen for a timed session, like his speech therapy sessions.
+  Pick 1 or 2 sounds, then tap ▶️ Start. A 15-minute session runs in short blocks:
+  👂 **Listen** 2 min (the iPad says lots of words with his sound; he just listens) →
+  🗣️ **Your turn** 6 min (the normal game, non-stop until the time's up) →
+  🎈 **Wiggle break** 1 min (opens a present for a sticker, then "Jump like a frog!", "Stomp like a dinosaur!") →
+  🗣️ **Your turn** 6 min → 🎁 **Present** with how many tries and stars he got.
+  With two sounds, he does one before the break and one after.
+- A picture strip at the top shows where he is in the plan, with a bar for the current block and the minutes left.
+- ⏸️ pauses the timer (Keep going / Finish now). It also pauses by itself if the app goes into the background.
+  Finishing early still earns the present.
+- Grown-ups → **⏱️ Practice time**: choose 5, 10 or 15 minutes (15 by default; 5 minutes has no break) and hide the button if you like.
+- Grown-ups → Progress: a **Practice times** list with the day, sounds, minutes, tries and % great for each session.
+- Buttons for the main action (Start, Let's go, Play again) are all the same gold colour.
+
 ## v13 · 2026-11-17 · 16 more sounds, in their own Sounds & levels menu
 - **16 new sounds, all off by default**, so his home screen only shows what a grown-up picks:
   🍿 P, ⚽ B, 😋 M, ⏰ T, 🥁 D, 👃 N, 🌬️ H, 👻 W, 🙌 Y, 📷 K, 🎈 F, 🔔 NG, 🦘 J, 🐍 S, 🐝 Z, 🥶 R-blends.

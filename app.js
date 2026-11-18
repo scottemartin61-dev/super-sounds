@@ -44,6 +44,9 @@
     mixMine: true,      // mix "My words" into normal rounds
     handsFree: false,   // start listening by itself after the word is said
     realSounds: true,   // recorded animal / vehicle / flush sounds
+    sessionMins: 15,    // Practice time length (5 / 10 / 15)
+    sessionBtn: true,   // show the Practice time button on the home screen
+    sessionPicks: [],   // sounds picked last time for Practice time
   };
   // How loud (RMS) counts as a "big voice" for each meter setting.
   const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
@@ -70,6 +73,8 @@
     d.stars = d.stars || 0;
     d.stats = d.stats || {};         // "R|start|rabbit" -> { t: tries, g: greats }
     d.days = d.days || {};           // "2026-11-17" -> rounds finished
+    d.sessions = Array.isArray(d.sessions) ? d.sessions : [];   // finished Practice times
+    if (!Array.isArray(d.settings.sessionPicks)) d.settings.sessionPicks = [];
     return d;
   }
 
@@ -927,6 +932,7 @@
     if (screen === "play" && name !== "play") { resetRecording(); stopSpeaking(); stopMirror(); }
     if (screen === "grown" && name !== "grown") { stopGrownRecord(); stopSpeaking(); clearPendingPhoto(); }
     if (name === "grown" && screen === "sounds") { screen = name; render(); scrollToId("sounds-panel"); return; }
+    if ((screen === "warm" || screen === "brk") && name !== screen) { if (session) session.tok++; stopSpeaking(); }
     screen = name;
     render();
     window.scrollTo(0, 0);
@@ -938,7 +944,8 @@
   }
 
   function render() {
-    ({ home: renderHome, play: renderPlay, reward: renderReward, book: renderBook, grown: renderGrown, sounds: renderSounds })[screen]();
+    ({ home: renderHome, play: renderPlay, reward: renderReward, book: renderBook, grown: renderGrown, sounds: renderSounds,
+      spick: renderSessionPick, warm: renderWarm, brk: renderBreak })[screen]();
   }
 
   // ---------- Home ----------
@@ -972,6 +979,8 @@
           : `<p class="empty-note">A grown-up needs to turn on a sound in the Grown-ups area.</p>`}
         <footer class="home-bottom">
           <button class="pill" data-act="book">📖 Sticker book</button>
+          ${S().sessionBtn && on.length ? `<button class="pill main session-btn" data-act="s-open"
+            aria-label="Practice time, ${sessionMins()} minutes">⏱️ ${sessionMins()} min<span class="wide-only"> practice</span></button>` : ""}
           <button class="pill hold" data-hold="grown" aria-label="Grown-ups: press and hold for 2 seconds">
             <span>🔒 Grown-ups<small>press &amp; hold</small></span>
           </button>
@@ -1085,6 +1094,7 @@
   }
 
   function sayCurrent() {
+    if (round.session && (!session || session.paused)) return;
     const item = currentItem();
     const btn = app.querySelector('[data-act="listen"]');
     btn && btn.classList.add("active");
@@ -1094,6 +1104,7 @@
     if (step >= 2) parts.push(c.model ? { text: c.model, say: c.modelSay } : { text: item.w, say: item.say });
     else if (item.pair) parts.push({ text: item.pair });
     parts.push({ text: item.w, say: item.say });
+    if (round.intro) { parts.unshift({ text: round.intro }); round.intro = null; }
     const tok = ++round.sayTok;
     speak(parts, () => {
       btn && btn.classList.remove("active");
@@ -1113,11 +1124,11 @@
 
     app.innerHTML = `
       <div class="screen play" style="${soundVars(round.sound)}">
-        <header class="topbar">
+        ${round.session ? sessionTopHTML() : `<header class="topbar">
           <button class="icon-btn" data-act="home" aria-label="Stop and go home">🏠</button>
           <div class="dots" aria-label="Word ${round.idx + 1} of ${round.items.length}">${dots}</div>
           <div class="stars" aria-label="${data.stars} stars">⭐ ${data.stars}</div>
-        </header>
+        </header>`}
         <div class="cue">${s.cue} ${esc(s.label)} · ${esc(s.cueText)}</div>
         <main class="card ${item.pair ? "has-pair" : ""} ${mic && S().voiceMeter ? "has-meter" : ""}" aria-label="${esc(lvl ? lvl.name : "")}">
           ${item.pair ? `<div class="pair"><span aria-hidden="true">${item.pp}</span> ${esc(item.pair)} <span class="arrow">➜</span></div>` : ""}
@@ -1141,6 +1152,7 @@
           <button class="judge again" data-act="again">🔁 Again</button>
           <button class="judge skip" data-act="skip">Skip ➜</button>
         </section>
+        ${round.session ? pauseHTML() : ""}
       </div>`;
     updateKidRow();
     updateMirror();
@@ -1173,6 +1185,7 @@
     const st = (data.stats[k] = data.stats[k] || { t: 0, g: 0 });
     st.t++;
     if (great) st.g++;
+    if (round.session && session) { session.tries++; if (great) session.greats++; }
     save();
   }
 
@@ -1225,45 +1238,407 @@
 
   function nextWord() {
     if (screen !== "play") return;
+    if (round.session && session && session.paused) { session.resumeNext = true; return; }
     resetRecording();
     round.idx++;
     round.tries = 0;
     round.coach = 0;
     stopMirror();
     round.busy = false;
-    if (round.idx >= round.items.length) { finishRound(); return; }
+    if (round.session) {
+      if (!session) return;
+      if (blockDone()) { nextBlock(); return; }
+      if (round.idx >= round.items.length) {
+        const more = sessionItems(block().sounds, 10);
+        round.meta.push(...more);
+        round.items.push(...more.map((x) => x.item));
+      }
+      round.sound = round.meta[round.idx].k;
+      round.level = round.meta[round.idx].lv;
+    } else if (round.idx >= round.items.length) { finishRound(); return; }
     render();
     if (S().autoSay) setTimeout(() => { if (screen === "play") sayCurrent(); }, 350);
   }
 
-  function finishRound() {
-    const dk = dayKey();
-    data.days[dk] = (data.days[dk] || 0) + 1;
+  // A new sticker for his book (or a repeat once he has them all).
+  function giveSticker() {
     const th = theme();
     const have = collected();
     const left = th.stickers.filter((x) => !have.includes(x));
     if (left.length) {
       const sticker = left[Math.floor(Math.random() * left.length)];
       have.push(sticker);
-      reward = { sticker, isNew: true, complete: left.length === 1 };
-    } else {
-      reward = { sticker: th.stickers[Math.floor(Math.random() * th.stickers.length)], isNew: false, complete: true };
+      return { sticker, isNew: true, complete: left.length === 1 };
     }
+    return { sticker: th.stickers[Math.floor(Math.random() * th.stickers.length)], isNew: false, complete: true };
+  }
+
+  function finishRound() {
+    const dk = dayKey();
+    data.days[dk] = (data.days[dk] || 0) + 1;
+    reward = giveSticker();
     save();
     show("reward");
     chime("big");
+  }
+
+  // =================================================================
+  //  Practice time: a timed session in short blocks, like a therapy session.
+  //  Listen (warm-up) → your turn → wiggle break + sticker → your turn → present.
+  // =================================================================
+  const TIME_SCALE = Number(new URLSearchParams(location.search).get("speed")) || 1;   // for testing only
+  const SESSION_PLANS = {
+    5: [["warm", 1], ["practice", 4]],
+    10: [["warm", 1.5], ["practice", 4], ["break", 1], ["practice", 3.5]],
+    15: [["warm", 2], ["practice", 6], ["break", 1], ["practice", 6]],
+  };
+  const BLOCK_ICON = { warm: "👂", practice: "🗣️", break: "🎈" };
+  const BLOCK_NAME = { warm: "Listen", practice: "Your turn", break: "Wiggle break" };
+  const MOVES = [
+    ["🐸", "Jump like a frog!"], ["🦒", "Stretch up tall like a giraffe!"], ["🦖", "Stomp like a dinosaur!"],
+    ["🐦", "Flap your wings like a bird!"], ["🐕", "Shake like a wet doggy!"], ["🐢", "Walk slowly like a turtle."],
+    ["🌬️", "Take a big breath in, then blow it out slowly."], ["🙌", "Reach up high, then touch your toes!"],
+  ];
+  const MOVE_MS = 15000;
+  let session = null;
+  let sessionPicks = [];
+
+  const sessionMins = () => (SESSION_PLANS[S().sessionMins] ? S().sessionMins : 15);
+  const block = () => session.blocks[session.bi];
+  const blockMs = (b) => b.m * 60000;
+  const blockElapsed = () => (session.acc + (session.runStart ? performance.now() - session.runStart : 0)) * TIME_SCALE;
+  const blockDone = () => blockElapsed() >= blockMs(block());
+  const inSession = () => !!session && (screen === "warm" || screen === "brk" || (screen === "play" && round && round.session));
+
+  function planText(mins) {
+    return SESSION_PLANS[mins].map(([t, m]) => `${BLOCK_ICON[t]} ${BLOCK_NAME[t]} ${m} min`).join(" → ") + " → 🎁 Present";
+  }
+
+  function minsLeft() {
+    let ms = Math.max(0, blockMs(block()) - blockElapsed());
+    for (let i = session.bi + 1; i < session.blocks.length; i++) ms += blockMs(session.blocks[i]);
+    return Math.ceil(ms / 60000);
+  }
+  const leftText = () => { const m = minsLeft(); return m <= 0 ? "Almost done" : `${m} min left`; };
+  const blockPct = () => Math.min(100, (100 * blockElapsed()) / blockMs(block()));
+
+  // Words for a block: n for each sound, taken in turn (A, B, A, B...).
+  function sessionItems(keys, n) {
+    const lists = keys.map((k) => {
+      const lv = S().sounds[k].level;
+      return pickWords(k, lv, n).map((item) => ({ item, k, lv }));
+    });
+    const out = [];
+    for (let i = 0; i < n; i++) lists.forEach((l) => l[i] && out.push(l[i]));
+    return out;
+  }
+
+  // ---------- Choosing the sounds ----------
+  function openSessionPick() {
+    const on = Object.keys(SOUNDS).filter((k) => S().sounds[k].on);
+    sessionPicks = S().sessionPicks.filter((k) => on.includes(k)).slice(0, 2);
+    if (!sessionPicks.length && on.length === 1) sessionPicks = [on[0]];
+    show("spick");
+  }
+
+  function togglePick(k) {
+    if (sessionPicks.includes(k)) sessionPicks = sessionPicks.filter((x) => x !== k);
+    else { sessionPicks.push(k); if (sessionPicks.length > 2) sessionPicks.shift(); }
+    S().sessionPicks = sessionPicks.slice();
+    save();
+    render();
+    app.querySelector(".screen").style.animation = "none";   // no fade on each tap
+  }
+
+  function renderSessionPick() {
+    const mins = sessionMins();
+    const on = Object.keys(SOUNDS).filter((k) => S().sounds[k].on);
+    const tiles = on.map((k) => {
+      const s = SOUNDS[k], picked = sessionPicks.includes(k);
+      return `<button class="tile ${picked ? "picked" : ""}" style="${soundVars(k)}" data-act="s-pick" data-sound="${k}"
+          aria-pressed="${picked}" aria-label="${esc(s.label)} sound">
+          ${picked ? `<span class="tick" aria-hidden="true">✓</span>` : ""}
+          <span class="tile-cue">${s.cue}</span>
+          <span class="tile-letter ${s.label.length > 2 ? "long" : ""}">${esc(s.label)}</span>
+          <span class="tile-text">${esc(s.cueText)}</span>
+        </button>`;
+    }).join("");
+    const plan = SESSION_PLANS[mins].map(([t, m]) =>
+      `<span class="plan-step"><b>${BLOCK_ICON[t]}</b>${esc(BLOCK_NAME[t])}<small>${m} min</small></span>`).join("") +
+      `<span class="plan-step"><b>🎁</b>Present</span>`;
+    app.innerHTML = `
+      <div class="screen spick">
+        <header class="book-head">
+          <button class="icon-btn" data-act="home" aria-label="Back">⬅️</button>
+          <h1>⏱️ Practice time</h1>
+        </header>
+        <div class="plan" aria-label="The plan">${plan}</div>
+        <p class="pick-note">Pick 1 or 2 sounds${sessionPicks.length === 2 && SESSION_PLANS[mins].filter(([t]) => t === "practice").length > 1
+          ? `: ${esc(SOUNDS[sessionPicks[0]].label)} first, ${esc(SOUNDS[sessionPicks[1]].label)} after the break` : ""}</p>
+        <div class="tiles">${tiles}</div>
+        <footer class="spick-go">
+          <button class="pill main" data-act="s-start" ${sessionPicks.length ? "" : "disabled"}>▶️ Start</button>
+        </footer>
+      </div>`;
+  }
+
+  // ---------- Running the session ----------
+  function startSession() {
+    const keys = sessionPicks.filter((k) => S().sounds[k] && S().sounds[k].on);
+    if (!keys.length) return;
+    const mins = sessionMins();
+    const plan = SESSION_PLANS[mins];
+    const twoTurns = plan.filter(([t]) => t === "practice").length > 1 && keys.length > 1;
+    let pi = 0;
+    const blocks = plan.map(([t, m]) => ({ t, m, sounds: t === "practice" && twoTurns ? [keys[pi++ % keys.length]] : keys.slice() }));
+    if (session) clearInterval(session.timer);
+    session = { mins, keys, blocks, bi: -1, acc: 0, runStart: 0, doneMs: 0, tries: 0, greats: 0,
+      paused: false, resumeNext: false, early: false, tok: 0, timer: setInterval(tickSession, 500) };
+    nextBlock();
+  }
+
+  function nextBlock() {
+    // A break that runs on while nobody taps "Let's go" doesn't count as practice time.
+    if (session.bi >= 0) session.doneMs += block().t === "break" ? Math.min(blockElapsed(), blockMs(block())) : blockElapsed();
+    session.bi++;
+    session.acc = 0;
+    session.runStart = performance.now();
+    if (session.bi >= session.blocks.length) { finishSession(); return; }
+    const b = block();
+    if (b.t === "warm") startWarm(b);
+    else if (b.t === "practice") startPractice(b);
+    else startBreak();
+  }
+
+  function tickSession() {
+    if (!session || session.paused || !inSession()) return;
+    const f = document.getElementById("s-fill");
+    if (f) f.style.width = blockPct() + "%";
+    const l = document.getElementById("s-left");
+    if (l) l.textContent = leftText();
+    if (screen === "brk") tickBreak();
+  }
+
+  function sessionTopHTML() {
+    const steps = session.blocks.map((b, i) =>
+      `<span class="sstep ${i < session.bi ? "done" : i === session.bi ? "now" : ""}" title="${BLOCK_NAME[b.t]}">${BLOCK_ICON[b.t]}</span>`).join("") +
+      `<span class="sstep" title="Present">🎁</span>`;
+    return `<header class="topbar s-top">
+        <button class="icon-btn" data-act="s-pause" aria-label="Pause">⏸️</button>
+        <div class="s-mid">
+          <div class="s-strip" aria-label="Step ${session.bi + 1} of ${session.blocks.length}: ${BLOCK_NAME[block().t]}">${steps}</div>
+          <div class="s-bar" aria-hidden="true"><div class="s-fill" id="s-fill" style="width:${blockPct()}%"></div></div>
+        </div>
+        <div class="s-side">
+          <div class="stars" aria-label="${data.stars} stars">⭐ ${data.stars}</div>
+          <small id="s-left">${leftText()}</small>
+        </div>
+      </header>`;
+  }
+
+  function pauseHTML() {
+    return `<div class="pause-cover ${session && session.paused ? "" : "hidden"}" id="pause-cover">
+        <div class="pause-box">
+          <div class="mascot" aria-hidden="true">${theme().mascot}</div>
+          <h2>Paused</h2>
+          <p class="note">The timer has stopped. Stopping early is always fine.</p>
+          <button class="pill main" data-act="s-resume">▶️ Keep going</button>
+          <button class="pill" data-act="s-finish">🏁 Finish now</button>
+        </div>
+      </div>`;
+  }
+
+  function pauseSession() {
+    if (!session || session.paused) return;
+    session.acc += session.runStart ? performance.now() - session.runStart : 0;
+    session.runStart = 0;
+    session.paused = true;
+    session.tok++;
+    if (round) round.sayTok++;
+    stopSpeaking();
+    player.pause();
+    if (screen === "play") { resetRecording(); updateKidRow(); stopMirror(); }
+    const c = document.getElementById("pause-cover");
+    if (c) c.classList.remove("hidden");
+  }
+
+  function resumeSession() {
+    if (!session || !session.paused) return;
+    session.paused = false;
+    session.runStart = performance.now();
+    const c = document.getElementById("pause-cover");
+    if (c) c.classList.add("hidden");
+    if (session.resumeNext) { session.resumeNext = false; nextWord(); return; }
+    if (screen === "warm") warmSay();
+    else if (screen === "play" && !round.busy) sayCurrent();
+  }
+
+  function finishSession() {
+    const s = session;
+    clearInterval(s.timer);
+    const log = { d: new Date().toISOString(), plan: s.mins, mins: Math.round(s.doneMs / 6000) / 10,
+      tries: s.tries, greats: s.greats, sounds: s.keys, early: s.early };
+    data.sessions = data.sessions.concat(log).slice(-60);
+    const dk = dayKey();
+    data.days[dk] = (data.days[dk] || 0) + 1;
+    reward = Object.assign(giveSticker(), { session: log });
+    session = null;
+    save();
+    show("reward");
+    chime("big");
+  }
+
+  function finishSessionNow() {
+    if (!session) return;
+    if (!session.paused) session.acc += session.runStart ? performance.now() - session.runStart : 0;
+    session.runStart = 0;
+    session.paused = false;
+    session.early = true;
+    session.doneMs += session.acc * TIME_SCALE;
+    session.acc = 0;
+    finishSession();
+  }
+
+  // ---------- Warm-up: he just listens to lots of words with his sound ----------
+  function startWarm(b) {
+    session.warm = { list: sessionItems(b.sounds, 12), idx: 0 };
+    show("warm");
+    warmSay();
+  }
+  const warmNow = () => session.warm.list[session.warm.idx];
+
+  function warmSay() {
+    if (!session || session.paused || screen !== "warm") return;
+    const tok = ++session.tok;
+    const { item } = warmNow();
+    const ok = () => session && tok === session.tok && screen === "warm" && !session.paused;
+    const btn = app.querySelector('[data-act="warm-again"]');
+    btn && btn.classList.add("active");
+    speak([{ text: item.w, say: item.say }], () => {
+      btn && btn.classList.remove("active");
+      if (ok()) setTimeout(() => { if (ok()) warmNext(); }, 1400);
+    });
+  }
+
+  function warmNext() {
+    if (!session || screen !== "warm") return;
+    session.tok++;
+    if (blockDone()) { nextBlock(); return; }
+    const w = session.warm;
+    w.idx++;
+    if (w.idx >= w.list.length) w.list.push(...sessionItems(block().sounds, 12));
+    render();
+    warmSay();
+  }
+
+  function renderWarm() {
+    const { item, k } = warmNow();
+    const s = SOUNDS[k];
+    app.innerHTML = `
+      <div class="screen play warm" style="${soundVars(k)}">
+        ${sessionTopHTML()}
+        <div class="cue">${s.cue} ${esc(s.label)} · 👂 Just listen!</div>
+        <main class="card">
+          ${item.pair ? `<div class="pair"><span aria-hidden="true">${item.pp}</span> ${esc(item.pair)} <span class="arrow">➜</span></div>` : ""}
+          <div class="pic" aria-hidden="true">${picHTML(item)}</div>
+          <div class="word ${item.w.length > 12 ? "long" : ""}">${highlightItem(k, item)}</div>
+          <div class="msg">Listen for the ${esc(s.label)} sound 👂</div>
+        </main>
+        <section class="kid-row two">
+          <button class="big-btn" data-act="warm-again"><span class="ico">🔊</span>Again</button>
+        </section>
+        <section class="grown-row" aria-label="Grown-up buttons">
+          <span class="label">Grown-up:</span>
+          <button class="judge again" data-act="warm-next">Next word ➜</button>
+          <button class="judge skip" data-act="block-skip">Skip listening ➜</button>
+        </section>
+        ${pauseHTML()}
+      </div>`;
+  }
+
+  // ---------- Practice blocks: the normal game, but it keeps going until time's up ----------
+  function startPractice(b) {
+    const list = sessionItems(b.sounds, 10);
+    if (!list.length) { nextBlock(); return; }
+    round = { sound: list[0].k, level: list[0].lv, items: list.map((x) => x.item), meta: list, idx: 0, tries: 0,
+      greats: 0, busy: false, sayTok: 0, coach: 0, session: true, intro: "Your turn!" };
+    show("play");
+    setMsg("Your turn! 🎤");
+    if (S().autoSay) sayCurrent();
+  }
+
+  // ---------- Wiggle break: open a present, then move about ----------
+  function startBreak() {
+    session.brk = { opened: false, openedAt: 0, move: -1, moveAt: 0, ready: false, order: shuffle(MOVES.slice()) };
+    reward = giveSticker();
+    save();
+    show("brk");
+    say("Break time! Open your present.");
+  }
+
+  function moveHTML() {
+    const k = session.brk;
+    if (k.move < 0) return "";
+    const [pic, text] = k.order[k.move % k.order.length];
+    return `<span class="move-pic" aria-hidden="true">${pic}</span><b>${esc(text)}</b>`;
+  }
+
+  function renderBreak() {
+    const k = session.brk;
+    app.innerHTML = `
+      <div class="screen reward brk">
+        ${sessionTopHTML()}
+        <h1>🎈 Wiggle break!</h1>
+        <button class="gift ${k.opened ? "hidden" : ""}" data-act="brk-open" aria-label="Open your present">🎁<small>Tap to open!</small></button>
+        <div class="new-sticker ${k.opened ? "" : "hidden"}" aria-hidden="true">${reward.sticker}</div>
+        <div class="move ${k.move >= 0 ? "" : "hidden"}" id="move" aria-live="polite">${moveHTML()}</div>
+        <button class="pill main go ${k.ready ? "" : "hidden"}" data-act="brk-go">▶️ Let's go!</button>
+        <button class="judge skip ${k.ready ? "hidden" : ""}" data-act="brk-go">Grown-up: skip the break ➜</button>
+        ${pauseHTML()}
+      </div>`;
+  }
+
+  function openBreakGift() {
+    const k = session.brk;
+    if (k.opened) return;
+    k.opened = true;
+    k.openedAt = blockElapsed();
+    app.querySelector(".gift").classList.add("hidden");
+    app.querySelector(".new-sticker").classList.remove("hidden");
+    giftSounds();
+  }
+
+  function tickBreak() {
+    const k = session.brk;
+    const t = blockElapsed();
+    if (k.opened && !k.ready && ((k.move < 0 && t - k.openedAt > 2500) || (k.move >= 0 && t - k.moveAt >= MOVE_MS))) {
+      k.move++;
+      k.moveAt = t;
+      const el = document.getElementById("move");
+      if (el) { el.innerHTML = moveHTML(); el.classList.remove("hidden"); }
+      say(k.order[k.move % k.order.length][1]);
+    }
+    // Ready once the time is up and he's had at least one move to do (the timer starts before he opens the present).
+    if (!k.ready && t >= blockMs(block()) && k.move >= 0 && t - k.moveAt >= 10000) {
+      k.ready = true;
+      app.querySelector(".go").classList.remove("hidden");
+      app.querySelector('.judge.skip[data-act="brk-go"]').classList.add("hidden");
+      say("Ready? Let's go!");
+    }
   }
 
   // ---------- Reward ----------
   function renderReward() {
     const th = theme();
     const name = S().name.trim();
-    const g = round ? round.greats : 0;
+    const sess = reward.session;
+    const g = sess ? sess.greats : round ? round.greats : 0;
     app.innerHTML = `
       <div class="screen reward">
         <div class="mascot bob" aria-hidden="true">${th.mascot}</div>
         <h1>You did it${name ? ", " + esc(name) : ""}!</h1>
-        <p class="sub">${g ? `You got ${"⭐".repeat(Math.min(g, 10))}` : "Great practising!"}</p>
+        ${sess ? `<p class="sub">You practised for ${sess.mins < 1 ? "a little while" : Math.round(sess.mins) + " minute" + (Math.round(sess.mins) === 1 ? "" : "s")}!</p>` : ""}
+        <p class="sub">${sess && !sess.tries ? "Great listening!" : sess ? `${sess.tries} tr${sess.tries === 1 ? "y" : "ies"} · ⭐ ${g}` : g ? `You got ${"⭐".repeat(Math.min(g, 10))}` : "Great practising!"}</p>
         <button class="gift" data-act="open" aria-label="Open your present">🎁<small>Tap to open!</small></button>
         <div class="opened hidden">
           <div class="new-sticker" aria-hidden="true">${reward.sticker}</div>
@@ -1272,7 +1647,7 @@
             : "You have every sticker! Amazing!"}</p>
         </div>
         <div class="actions hidden">
-          <button class="pill main" data-act="again-round">🔁 Play again</button>
+          ${sess ? "" : `<button class="pill main" data-act="again-round">🔁 Play again</button>`}
           <button class="pill" data-act="book">📖 Sticker book</button>
           <button class="pill" data-act="home">🏠 Home</button>
         </div>
@@ -1283,6 +1658,10 @@
     app.querySelector(".gift").classList.add("hidden");
     app.querySelector(".opened").classList.remove("hidden");
     app.querySelector(".actions").classList.remove("hidden");
+    giftSounds();
+  }
+
+  function giftSounds() {
     if (theme().sfx === "flush") {
       if (!playSfx("whoosh")) whoosh();
       setTimeout(() => chime("big"), 350);
@@ -1339,6 +1718,12 @@
         const [snd, , word] = key.split("|");
         return `<li><b>${esc(word)}</b> (${esc(snd)}) — ${v.g} great out of ${v.t} tries</li>`;
       });
+    const sessions = data.sessions.slice(-10).reverse().map((x) => {
+      const day = new Date(x.d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+      const names = x.sounds.map((k) => (SOUNDS[k] ? SOUNDS[k].label : k)).join(", ");
+      return `<tr><td>${esc(day)}</td><td>${esc(names)}</td><td>${x.mins} of ${x.plan} min${x.early ? " (stopped early)" : ""}</td>
+        <td>${x.tries}</td><td>${x.tries ? Math.round((100 * x.greats) / x.tries) + "%" : "–"}</td></tr>`;
+    });
     let days = 0, rounds = 0;
     for (let i = 0; i < 7; i++) {
       const d = new Date();
@@ -1353,6 +1738,9 @@
         <thead><tr><th>Sound</th><th>Level</th><th>Tries</th><th>Great</th></tr></thead>
         <tbody>${rows.join("")}</tbody></table>` : `<p class="note">No practice recorded yet.</p>`}
       ${tricky.length ? `<h3>Tricky words</h3><ul>${tricky.join("")}</ul>` : ""}
+      ${sessions.length ? `<h3>Practice times</h3><table>
+        <thead><tr><th>Day</th><th>Sounds</th><th>Time</th><th>Tries</th><th>Great</th></tr></thead>
+        <tbody>${sessions.join("")}</tbody></table>` : ""}
       <p class="note">"Tries" counts every Great or Again tap. Skips aren't counted.</p>`;
   }
 
@@ -1530,8 +1918,9 @@
             <li>You tap ⭐ <b>Great!</b> when the target sound was right, or 🔁 <b>Again</b> to have another go.
                 After ${MAX_TRIES} tries it moves on by itself, so he never gets stuck.</li>
             <li>Every finished round earns a sticker, no matter how it went.</li>
+            <li>For a longer session, tap ⏱️ <b>Practice time</b> on the home screen (see below).</li>
           </ol>
-          <p class="note">Keep sessions short (1–3 rounds) and stop while it's still fun. Judge only the target sound,
+          <p class="note">Stop while it's still fun. Judge only the target sound,
             not the rest of the word. If he sees a speech therapist, ask which level each sound should be on.</p>
         </section>
 
@@ -1587,6 +1976,20 @@
           <p class="note">On his home screen now:</p>
           <div class="chips">${soundsSummary}</div>
           <button class="pill main" data-act="sounds-menu" style="align-self:flex-start">🔤 Choose sounds &amp; levels (${Object.keys(SOUNDS).length} sounds) ›</button>
+        </section>
+
+        <section class="panel">
+          <h2>⏱️ Practice time</h2>
+          <p class="note">A timed session in short blocks, like a speech therapy session. He listens first, then has
+            his turn, gets a wiggle break and a sticker, has another turn, then opens a present. If you pick two sounds,
+            he does one before the break and one after. Tap ⏸️ at any time to stop the timer.</p>
+          <div class="field">Length
+            ${radioGroup("sessionMins", [[5, "5 min"], [10, "10 min"], [15, "15 min"]], sessionMins())}
+            <span class="note" id="plan-note">${esc(planText(sessionMins()))}</span>
+          </div>
+          <label class="toggle"><input type="checkbox" data-set="sessionBtn" ${st.sessionBtn ? "checked" : ""}>
+            Show the ⏱️ Practice time button on his home screen</label>
+          <p class="note">Ask his speech therapist how long home practice should be. Short, regular practice usually works best.</p>
         </section>
 
         <section class="panel">
@@ -1653,6 +2056,13 @@
       case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree": case "realSounds":
         st[key] = el.checked; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
+      case "sessionMins": {
+        st.sessionMins = Number(el.value);
+        const n = document.getElementById("plan-note");
+        if (n) n.textContent = planText(sessionMins());
+        break;
+      }
+      case "sessionBtn": st.sessionBtn = el.checked; break;
       case "sound-on":
         st.sounds[el.dataset.sound].on = el.checked;
         if (screen === "sounds") { save(); const y = window.scrollY; render(); window.scrollTo(0, y); return; }
@@ -1675,6 +2085,17 @@
     start: (b) => startRound(b.dataset.sound),
     home: () => show("home"),
     "sounds-menu": () => show("sounds"),
+    "s-open": () => openSessionPick(),
+    "s-pick": (b) => togglePick(b.dataset.sound),
+    "s-start": () => startSession(),
+    "s-pause": () => pauseSession(),
+    "s-resume": () => resumeSession(),
+    "s-finish": () => finishSessionNow(),
+    "warm-again": () => { if (session) { session.tok++; warmSay(); } },
+    "warm-next": () => warmNext(),
+    "block-skip": () => { if (session) { session.tok++; stopSpeaking(); nextBlock(); } },
+    "brk-open": () => openBreakGift(),
+    "brk-go": () => { if (session && screen === "brk") nextBlock(); },
     "grown-back": () => show("grown"),
     book: () => show("book"),
     listen: () => { player.pause(); sayCurrent(); },
@@ -1774,6 +2195,7 @@
   // Stop the mic and voice if the app goes to the background.
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
+      if (inSession()) pauseSession();
       stopSpeaking();
       if (rec.state === "listening") { resetRecording(); updateKidRow(); }
       else if (rec.state === "recording") stopRecording();
