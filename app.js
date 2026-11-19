@@ -58,6 +58,8 @@
     buildLevel: "want", // how he asks in Build-it: word / want / iwant / please
     buildModel: "first",// Build-it: say the phrase for him straight away ("first") or wait 5 seconds ("wait")
     saveTries: false,   // Voice report: keep his tries (anonymous) on this device until a grown-up exports them
+    starClips: false,   // Star clips: video of his tries; the ⭐ Great ones are kept on this device
+    starPrompt: "button", // how a star clip is used as the example: "button" (🎬 Watch me), "auto" (instead of the iPad voice), "off"
   };
   // How loud (RMS) counts as a "big voice" for each meter setting.
   const VOICE_THRESHOLDS = { easy: 0.035, medium: 0.065, hard: 0.11 };
@@ -93,6 +95,8 @@
     oneOf("triesGoal", [0, 50, 75, 100]);
     oneOf("buildLevel", ["word", "want", "iwant", "please"]);
     oneOf("buildModel", ["first", "wait"]);
+    oneOf("starPrompt", ["button", "auto", "off"]);
+    d.starClips = Array.isArray(d.starClips) ? d.starClips : [];   // [{id, sound, w, hl, pic, day, type}] (videos in IndexedDB)
     d.builds = Array.isArray(d.builds) ? d.builds : [];   // finished Build-it games
     d.tries = d.tries || {};         // "2026-11-17" -> tries (Great or Again taps) that day
     return d;
@@ -111,12 +115,13 @@
     if (!dbPromise) {
       dbPromise = new Promise((resolve, reject) => {
         if (!window.indexedDB) { reject(new Error("No storage")); return; }
-        const req = indexedDB.open("superSounds", 2);
+        const req = indexedDB.open("superSounds", 3);
         req.onupgradeneeded = () => {
           const d = req.result;
           if (!d.objectStoreNames.contains("audio")) d.createObjectStore("audio");
           if (!d.objectStoreNames.contains("photos")) d.createObjectStore("photos");
           if (!d.objectStoreNames.contains("tries")) d.createObjectStore("tries");   // Voice report clips
+          if (!d.objectStoreNames.contains("stars")) d.createObjectStore("stars");   // ⭐ Star clips (video)
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
@@ -242,6 +247,7 @@
 
   function stopSpeaking() {
     voices.token++;
+    stopStar();
     if (voices.src) {
       try { voices.src.onended = null; voices.src.stop(); } catch (e) {}
       voices.src = null;
@@ -617,11 +623,10 @@
     rec.manual = !hands;
     rec.state = "starting";
     updateKidRow();
+    if (S().starClips) await ensureStarCam();
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      stream = await micStream();
     } catch (e) {
       rec.state = rec.url ? "done" : "idle";
       updateKidRow();
@@ -644,12 +649,14 @@
     }
     rec.mr.ondataavailable = (e) => { if (e.data && e.data.size) rec.chunks.push(e.data); };
     rec.mr.onstop = () => {
+      stopVideoRec();
       stopVad();
       const peak = stopMeter();
       stopStream();
       if (token !== rec.token) return;
       if (hands && !rec.heard) {
         // He didn't say anything: stop quietly, no "wrong" sound.
+        rec.videoP = null;
         rec.state = rec.url ? "done" : "idle";
         updateKidRow();
         const m = app.querySelector(".meter");
@@ -678,12 +685,20 @@
         .catch(() => {})
         .then(() => { if (token === rec.token && rec.url && S().autoHear) playBack(); });
     };
-    rec.mr.start();
+    try { rec.mr.start(); }
+    catch (e) {   // the mic went away while starting (e.g. leaving the screen): stop quietly
+      rec.mr = null;
+      stopStream();
+      rec.state = rec.url ? "done" : "idle";
+      updateKidRow();
+      return;
+    }
+    if (!hands) startVideoRec(token);   // hands-free: the video starts once he starts talking
     rec.state = hands ? "listening" : "recording";
     updateKidRow();
     startMeter(stream);
     if (hands) {
-      if (!watchVoice(stream, token)) { rec.heard = true; rec.manual = true; rec.state = "recording"; updateKidRow(); }
+      if (!watchVoice(stream, token)) { rec.heard = true; rec.manual = true; rec.state = "recording"; startVideoRec(token); updateKidRow(); }
       rec.timer = setTimeout(stopRecording, (rec.manual ? RECORD_SECONDS : LISTEN_SECONDS + RECORD_SECONDS) * 1000);
     } else {
       rec.timer = setTimeout(stopRecording, RECORD_SECONDS * 1000);
@@ -694,6 +709,7 @@
   function switchToManual() {
     rec.heard = true;
     rec.manual = true;
+    startVideoRec(rec.token);
     rec.state = "recording";
     clearTimeout(rec.timer);
     rec.timer = setTimeout(stopRecording, RECORD_SECONDS * 1000);
@@ -733,6 +749,7 @@
         if (loud >= 2) {
           rec.heard = true;
           rec.state = "recording";
+          startVideoRec(token);
           clearTimeout(rec.timer);
           rec.timer = setTimeout(stopRecording, RECORD_SECONDS * 1000);
           setMsg("");
@@ -781,6 +798,8 @@
   // Throw away the recording (new word, or leaving the game).
   function resetRecording() {
     rec.token++;
+    stopVideoRec();
+    rec.videoP = null;
     clearTimeout(rec.timer);
     stopVad();
     rec.clip = null;
@@ -974,7 +993,8 @@
   let reward = null;     // the sticker just earned
 
   function show(name) {
-    if (screen === "play" && name !== "play") { resetRecording(); stopSpeaking(); stopMirror(); }
+    if (screen === "play" && name !== "play") { resetRecording(); stopSpeaking(); stopMirror(); stopStarCam(); }
+    if (screen === "stars" && name !== "stars") closeStarView();
     if (screen === "grown" && name !== "grown") { stopGrownRecord(); stopSpeaking(); clearPendingPhoto(); }
     if (name === "grown" && screen === "sounds") { screen = name; render(); scrollToId("sounds-panel"); return; }
     if ((screen === "warm" || screen === "brk") && name !== screen) { if (session) session.tok++; stopSpeaking(); }
@@ -997,7 +1017,8 @@
   function render() {
     if (screen === "grown") setTimeout(refreshTriesCount, 0);
     ({ home: renderHome, play: renderPlay, reward: renderReward, book: renderBook, grown: renderGrown, sounds: renderSounds,
-      spick: renderSessionPick, warm: renderWarm, brk: renderBreak, bpick: renderBuildPick, build: renderBuild })[screen]();
+      spick: renderSessionPick, warm: renderWarm, brk: renderBreak, bpick: renderBuildPick, build: renderBuild, stars: renderStars })[screen]();
+    sendState();
   }
 
   // ---------- Home ----------
@@ -1117,7 +1138,7 @@
     const tok = ++mirror.token;
     let s;
     try {
-      s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      s = await camStream();
     } catch (e) {
       toast("The camera is blocked. A grown-up can allow it in the iPad's Settings → Safari → Camera.", 5000);
       return;
@@ -1154,6 +1175,17 @@
     const btn = app.querySelector('[data-act="listen"]');
     btn && btn.classList.add("active");
     const step = round.coach || 0;
+    // His own ⭐ clip as the example, instead of the iPad voice (Grown-ups → Star clips).
+    const star = S().starPrompt === "auto" && starPromptOn() && step === 0 && !item.pair ? starFor(round.sound, item) : null;
+    if (star) {
+      const tok = ++round.sayTok;
+      const intro = round.intro;
+      round.intro = null;
+      const done = () => { btn && btn.classList.remove("active"); if (round && tok === round.sayTok) maybeListen(); };
+      const go = () => { if (round && tok === round.sayTok) playStar(star, done, () => speak([{ text: item.w, say: item.say }], done)); };
+      if (intro) speak([{ text: intro }], go); else go();
+      return;
+    }
     const c = coachOf(round.sound);
     const parts = [];
     if (step >= 2) parts.push(c.model ? { text: c.model, say: c.modelSay } : { text: item.w, say: item.say });
@@ -1189,6 +1221,8 @@
           ${item.pair ? `<div class="pair"><span aria-hidden="true">${item.pp}</span> ${esc(item.pair)} <span class="arrow">➜</span></div>` : ""}
           <div class="pic" aria-hidden="true">${picHTML(item)}</div>
           <video class="mirror-video" id="mirror-video" playsinline muted autoplay aria-label="Mirror"></video>
+          <video class="star-video" id="star-video" playsinline muted aria-label="Watch yourself"></video>
+          ${starPromptOn() && starFor(round.sound, item) ? `<button class="star-btn" data-act="star-play" aria-label="Watch yourself say it">🎬<small>Watch me</small></button>` : ""}
           <div class="word ${long ? "long" : ""}">${highlightItem(round.sound, item)}</div>
           ${mic && S().voiceMeter ? `<div class="meter hidden" aria-hidden="true">
             <span>🔈</span><div class="meter-track"><div class="meter-fill"></div></div><span>📣</span></div>` : ""}
@@ -1215,6 +1249,7 @@
   }
 
   function updateKidRow() {
+    sendState();
     if (screen !== "play") return;
     const recBtn = app.querySelector('[data-act="record"]');
     const hear = app.querySelector('[data-act="hear"]');
@@ -1250,6 +1285,12 @@
     const dk = dayKey();
     data.tries[dk] = (data.tries[dk] || 0) + 1;
     save();
+    if (great && S().starClips && rec.videoP) {
+      const p = rec.videoP;
+      rec.videoP = null;
+      const meta = { sound: round.sound, w: item.w, hl: item.hl || null, pic: item.photo ? null : item.p, photo: item.photo ? item.id : null };
+      p.then((b) => { if (b) saveStar(b, meta); });
+    }
     if (S().saveTries && rec.blob && !rec.blobSaved && !item.mine) {
       rec.blobSaved = true;
       saveTry(rec.blob, { game: round.session ? "practice" : "round", sound: round.sound, level: round.level,
@@ -1275,6 +1316,7 @@
     b.textContent = "⭐";
     card.appendChild(b);
     setMsg(["Great job!", "You did it!", "Super sound!", "Wow!", "Nice!"][Math.floor(Math.random() * 5)]);
+    sendState();
     const played = greatSound();
     setTimeout(nextWord, played && theme().sfx === "flush" ? 1400 : 1100);   // let the flush finish first
   }
@@ -1293,6 +1335,7 @@
     } else {
       round.coach = round.tries;   // 1: slower + how-to card, 2: the sound on its own first
       showCoach();
+      sendState();
       setMsg(round.coach === 1 ? "Good trying! Let's go slow 🐢" : "Sound first, then the word 👂");
       setTimeout(() => { if (screen === "play") sayCurrent(); }, 500);
     }
@@ -1511,6 +1554,7 @@
     const l = document.getElementById("s-left");
     if (l) l.innerHTML = leftText();
     if (screen === "brk") tickBreak();
+    if (++call.tick % 10 === 0) sendState();
   }
 
   function sessionTopHTML() {
@@ -1606,6 +1650,8 @@
     // Let him know he was heard.
     if (kind === "break") say("Okay, break time.");
     else if (kind === "done") say("Okay! All done.");
+    if (kind !== "pause") callSend({ t: "alert", kind });
+    sendState();
   }
 
   function resumeAny() {
@@ -1615,6 +1661,7 @@
       stopSpeaking();
       const c = document.getElementById("pause-cover");
       if (c) c.classList.add("hidden");
+      sendState();
       if (build.sel >= 0) modelPart();
       return;
     }
@@ -1623,6 +1670,7 @@
     stopSpeaking();
     const c = document.getElementById("pause-cover");
     if (c) c.classList.add("hidden");
+    sendState();
     if (round.resumeNext) { round.resumeNext = false; nextWord(); return; }
     if (!round.busy) sayCurrent();
   }
@@ -1654,6 +1702,7 @@
     stopSpeaking();
     const c = document.getElementById("pause-cover");
     if (c) c.classList.add("hidden");
+    sendState();
     if (session.resumeNext) { session.resumeNext = false; nextWord(); return; }
     if (screen === "warm") warmSay();
     else if (screen === "play" && !round.busy) sayCurrent();
@@ -1908,6 +1957,7 @@
     const ask = document.getElementById("build-ask");
     if (ask) ask.innerHTML = askHTML();
     stopBuildRec(true);   // don't record the iPad's own voice
+    sendState();
     buildSay([{ text: phraseFor(build.kit.parts[build.sel][1]) }], () => startBuildRec());
   }
 
@@ -2063,7 +2113,7 @@
     const tok = ++bRec.tok;
     bRec.blob = null;
     let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+    try { stream = await micStream(); }
     catch (e) { return; }
     if (tok !== bRec.tok || !build || build.paused) { stream.getTracks().forEach((t) => t.stop()); return; }
     const type = pickAudioType();
@@ -2188,6 +2238,691 @@
 
   if (new URLSearchParams(location.search).has("test")) window.__ssTest = { saveTry, buildTriesZip, newTrySession };   // for testing only
 
+  // =================================================================
+  //  🎬 Star clips: video of his tries. The ones marked ⭐ Great are kept on this device, shown in
+  //  "My best sounds", and can be played as the example the next time that word comes up.
+  // =================================================================
+  // Per word: his first ever ⭐ (a milestone, kept for his progress history) + the newest 2.
+  // Clips start when he starts talking and are recorded small (about 250 KB each).
+  const STARS_RECENT = 2, MAX_STAR_BYTES = 150 * 1048576;
+  const starBytes = () => data.starClips.reduce((a, x) => a + (x.size || 300000), 0);
+  const starCam = { stream: null, p: null };
+  const starPromptOn = () => S().starClips && S().starPrompt !== "off";
+  const starKey = (sound, w) => `${sound}|${String(w).toLowerCase()}`;
+  function starFor(sound, item) {
+    const k = starKey(sound, item.w);
+    for (let i = data.starClips.length - 1; i >= 0; i--) if (starKey(data.starClips[i].sound, data.starClips[i].w) === k) return data.starClips[i];
+    return null;
+  }
+  const starCountText = () => `<b>${data.starClips.length}</b> star clip${data.starClips.length === 1 ? "" : "s"} for
+    <b>${new Set(data.starClips.map((x) => starKey(x.sound, x.w))).size}</b> words, ${(starBytes() / 1048576).toFixed(1)} MB of ${MAX_STAR_BYTES / 1048576} MB.`;
+
+  // One camera for the whole round, so the camera light doesn't flash on and off every word.
+  function ensureStarCam() {
+    if (!S().starClips || call.local) return Promise.resolve();
+    if (starCam.stream && starCam.stream.getVideoTracks().some((t) => t.readyState === "live")) return Promise.resolve();
+    if (!starCam.p) {
+      starCam.p = navigator.mediaDevices.getUserMedia(VIDEO)
+        .then((s) => { if (screen === "play" && S().starClips) starCam.stream = s; else s.getTracks().forEach((t) => t.stop()); })
+        .catch(() => toast("The camera is blocked, so star clips can't be recorded. Allow it in the iPad's Settings → Safari → Camera.", 5000))
+        .then(() => { starCam.p = null; });
+    }
+    return starCam.p;
+  }
+  function stopStarCam() {
+    if (starCam.stream) starCam.stream.getTracks().forEach((t) => t.stop());
+    starCam.stream = null;
+  }
+
+  function startVideoRec(token) {
+    const vt = S().starClips && liveTrack("video");
+    if (rec.vmr || !vt || !rec.stream || !window.MediaRecorder) return;
+    const vtype = ["video/mp4;codecs=avc3,opus", "video/mp4", "video/webm;codecs=vp8,opus", "video/webm"].find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+    const s = new MediaStream([vt.clone(), ...rec.stream.getAudioTracks().map((t) => t.clone())]);
+    let mr;
+    try { mr = new MediaRecorder(s, vtype ? { mimeType: vtype, videoBitsPerSecond: 450000, audioBitsPerSecond: 48000 } : undefined); }
+    catch (e) { s.getTracks().forEach((t) => t.stop()); return; }
+    const chunks = [];
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const p = new Promise((resolve) => {
+      mr.onstop = () => {
+        s.getTracks().forEach((t) => t.stop());
+        resolve(token === rec.token && chunks.length ? new Blob(chunks, { type: mr.mimeType || vtype || "video/mp4" }) : null);
+      };
+    });
+    try { mr.start(); } catch (e) { s.getTracks().forEach((t) => t.stop()); return; }
+    rec.vmr = mr;
+    rec.videoP = p;
+  }
+  function stopVideoRec() {
+    if (rec.vmr && rec.vmr.state === "recording") { try { rec.vmr.stop(); } catch (e) {} }
+    rec.vmr = null;
+  }
+
+  async function saveStar(blob, meta) {
+    try {
+      const buf = await blob.arrayBuffer();
+      const drop = (x) => { data.starClips = data.starClips.filter((c) => c !== x); idbDel("stars", x.id).catch(() => {}); };
+      // Make room: the oldest clips that aren't first-time milestones go first.
+      while (starBytes() + buf.byteLength > MAX_STAR_BYTES) {
+        const old = data.starClips.find((x) => !x.first);
+        if (!old) { toast("Star clips are full. A grown-up can save them to Files and delete some."); return; }
+        drop(old);
+      }
+      const k = starKey(meta.sound, meta.w);
+      const first = !data.starClips.some((x) => starKey(x.sound, x.w) === k && x.first);
+      const id = randId(10);
+      await idbPut("stars", id, { buf, type: blob.type || "video/mp4" });
+      data.starClips.push(Object.assign({ id, day: dayKey(), type: blob.type || "video/mp4", size: buf.byteLength, first }, meta));
+      const recent = data.starClips.filter((x) => starKey(x.sound, x.w) === k && !x.first);
+      recent.slice(0, Math.max(0, recent.length - STARS_RECENT)).forEach(drop);
+      save();
+      persistStorage();
+    } catch (e) { /* not saved: skip quietly */ }
+  }
+
+  // Play a star clip in the card. The video plays muted and its sound goes through Web Audio,
+  // which iPads allow without another tap. onFail runs if the clip can't be played.
+  const starPlay = { tok: 0, src: null, url: null };
+  async function playStar(entry, onEnd, onFail) {
+    stopStar();
+    const tok = ++starPlay.tok;
+    const fail = () => { if (tok === starPlay.tok) { stopStar(); (onFail || onEnd) && (onFail || onEnd)(); } };
+    let rec0;
+    try { rec0 = await idbGet("stars", entry.id); } catch (e) {}
+    if (tok !== starPlay.tok) return;
+    const v = document.getElementById("star-video"), card = app.querySelector(".card");
+    if (!rec0 || !v || !card) { fail(); return; }
+    starPlay.url = URL.createObjectURL(new Blob([rec0.buf], { type: rec0.type }));
+    v.src = starPlay.url;
+    v.muted = true;
+    card.classList.add("starring");
+    let audioOk = false;
+    const ctx = audioCtx();
+    if (ctx) {
+      try {
+        const ab = await decodeAudio(ctx, rec0.buf.slice(0));
+        if (tok !== starPlay.tok) return;
+        const src = ctx.createBufferSource();
+        src.buffer = ab;
+        src.connect(ctx.destination);
+        starPlay.src = src;
+        audioOk = true;
+      } catch (e) { /* no separate sound: unmute the video instead */ }
+    }
+    if (!audioOk) v.muted = false;
+    v.onended = () => { if (tok === starPlay.tok) { stopStar(); onEnd && onEnd(); } };
+    v.onerror = fail;
+    try {
+      await v.play();
+      if (starPlay.src && tok === starPlay.tok) starPlay.src.start();
+    } catch (e) { fail(); }
+  }
+  function stopStar() {
+    starPlay.tok++;
+    if (starPlay.src) { try { starPlay.src.stop(); } catch (e) {} starPlay.src = null; }
+    const v = document.getElementById("star-video");
+    if (v) { v.onended = v.onerror = null; try { v.pause(); } catch (e) {} v.removeAttribute("src"); }
+    if (starPlay.url) { URL.revokeObjectURL(starPlay.url); starPlay.url = null; }
+    const card = app.querySelector(".card");
+    if (card) card.classList.remove("starring");
+  }
+
+  // ---------- 🎬 My best sounds (his gallery) ----------
+  // One card per word: his first ⭐ and his newest, so he (and you) can see how far he's come.
+  function renderStars() {
+    const groups = new Map();
+    for (const x of data.starClips) {
+      const k = starKey(x.sound, x.w);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(x);
+    }
+    const list = [...groups.values()].sort((a, b) => b[b.length - 1].day.localeCompare(a[a.length - 1].day));
+    const short = (d) => { try { return new Date(d + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }); } catch (e) { return d; } };
+    const tiles = list.map((g) => {
+      const x = g[g.length - 1], first = g.find((c) => c.first) || g[0];
+      const item = { w: x.w, hl: x.hl, p: x.pic || "⭐", photo: !!x.photo, id: x.photo || "" };
+      return `<div class="star-tile" style="${SOUNDS[x.sound] ? soundVars(x.sound) : ""}">
+          <button class="st-main" data-act="star-view" data-id="${esc(x.id)}" aria-label="Watch ${esc(x.w)}">
+            <span class="st-pic" aria-hidden="true">${picHTML(item)}</span>
+            <span class="st-word">${SOUNDS[x.sound] ? highlightItem(x.sound, item) : esc(x.w)}</span></button>
+          <div class="st-when">
+            ${first !== x ? `<button class="mini" data-act="star-view" data-id="${esc(first.id)}">▶️ First · ${esc(short(first.day))}</button>` : ""}
+            <button class="mini" data-act="star-view" data-id="${esc(x.id)}">▶️ ${first !== x ? "Newest" : "⭐"} · ${esc(short(x.day))}</button>
+          </div></div>`;
+    }).join("");
+    app.innerHTML = `
+      <div class="screen book stars-screen">
+        <header class="book-head">
+          <button class="icon-btn" data-act="book" aria-label="Back to the sticker book">⬅️</button>
+          <h1>🎬 My best sounds</h1>
+          <span class="book-count">${list.length} word${list.length === 1 ? "" : "s"}</span>
+        </header>
+        ${list.length ? `<div class="star-grid">${tiles}</div>` : `<p class="empty-note">No star clips yet.</p>`}
+        <div class="star-view hidden" id="star-view">
+          <video id="star-view-video" playsinline></video>
+          <div class="sv-word" id="sv-word"></div>
+          <button class="pill main" data-act="star-close">✕ Close</button>
+        </div>
+      </div>`;
+  }
+  async function openStarView(id) {
+    const x = data.starClips.find((c) => c.id === id);
+    const box = document.getElementById("star-view"), v = document.getElementById("star-view-video");
+    if (!x || !box || !v) return;
+    let r;
+    try { r = await idbGet("stars", id); } catch (e) {}
+    if (!r) { toast("This clip can't be played."); return; }
+    closeStarView();
+    v.src = URL.createObjectURL(new Blob([r.buf], { type: r.type }));
+    document.getElementById("sv-word").innerHTML = SOUNDS[x.sound] ? highlightItem(x.sound, { w: x.w, hl: x.hl }) : esc(x.w);
+    box.classList.remove("hidden");
+    v.muted = false;
+    v.play().catch(() => {});
+  }
+  function closeStarView() {
+    const box = document.getElementById("star-view"), v = document.getElementById("star-view-video");
+    if (v && v.src) { try { v.pause(); } catch (e) {} URL.revokeObjectURL(v.src); v.removeAttribute("src"); }
+    if (box) box.classList.add("hidden");
+  }
+
+  async function exportStars() {
+    if (!data.starClips.length) { toast("No star clips yet."); return; }
+    const files = [], used = new Set();
+    for (const x of data.starClips) {
+      let r;
+      try { r = await idbGet("stars", x.id); } catch (e) {}
+      if (!r) continue;
+      const ext = /webm/.test(r.type) ? "webm" : "mp4";
+      let base = `${String(x.w).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "clip"}-${x.day}`, n = 1, name;
+      do { name = `${base}${n > 1 ? "-" + n : ""}.${ext}`; n++; } while (used.has(name));
+      used.add(name);
+      files.push({ name, data: new Uint8Array(r.buf) });
+    }
+    if (!files.length) { toast("Couldn't read the clips."); return; }
+    const file = new File([makeZip(files)], `super-sounds-star-clips-${dayKey()}.zip`, { type: "application/zip" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: "Super Sounds star clips" }); } catch (e) {}
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
+
+  // =================================================================
+  //  📹 Video call. His iPad and a grown-up's device (phone, tablet or computer) see and hear each other.
+  //  Live only: nothing is recorded or saved. The devices connect directly (WebRTC, encrypted);
+  //  a free public service (PeerJS) only introduces them. The grown-up's screen shows his word and the
+  //  ⭐ / 🔁 / game buttons, so he can play with nobody beside him. Opened with ?call=<id>&k=<key>.
+  // =================================================================
+  const PEERJS_URL = "https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js";
+  const CALL_Q = new URLSearchParams(location.search);
+  const REMOTE_MODE = CALL_Q.has("call");
+  const VIDEO = { video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+    audio: { echoCancellation: true, noiseSuppression: true } };
+  const call = { peer: null, conn: null, media: null, local: null, remote: null, name: "", state: "off",
+    big: false, syncT: 0, tick: 0 };   // state: off | waiting | live
+
+  let peerLoad = null;
+  function loadPeer() {
+    const get = () => window.Peer || (window.peerjs && window.peerjs.Peer);
+    if (get()) return Promise.resolve(get());
+    if (!peerLoad) peerLoad = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = PEERJS_URL;
+      s.onload = () => (get() ? resolve(get()) : reject(new Error("no Peer")));
+      s.onerror = () => { peerLoad = null; reject(new Error("load")); };
+      document.head.appendChild(s);
+    });
+    return peerLoad;
+  }
+
+  // While a call is on, recording, the mirror and Build-it borrow the call's mic / camera
+  // (asking for a second one can switch the first one off on iPads).
+  const liveTrack = (kind) => {
+    const src = call.local || starCam.stream;
+    const t = src && src.getTracks().find((x) => x.kind === kind);
+    return t && t.readyState === "live" ? t : null;
+  };
+  function micStream() {
+    const t = liveTrack("audio");
+    if (t) return Promise.resolve(new MediaStream([t.clone()]));
+    return navigator.mediaDevices.getUserMedia({ audio: VIDEO.audio });
+  }
+  function camStream() {
+    const t = liveTrack("video");
+    if (t) return Promise.resolve(new MediaStream([t.clone()]));
+    return navigator.mediaDevices.getUserMedia({ video: VIDEO.video, audio: false });
+  }
+
+  function callIds() {
+    if (!data.call || !data.call.id) { data.call = { id: "ss" + randId(14), key: randId(12) }; save(); }
+    return data.call;
+  }
+  const callLink = () => { const c = callIds(); return `${location.origin}${location.pathname}?call=${c.id}&k=${c.key}`; };
+
+  function callSend(m) {
+    if (call.conn && call.conn.open) { try { call.conn.send(m); } catch (e) {} }
+  }
+  function sendState() {
+    if (!call.conn || !call.conn.open || REMOTE_MODE) return;
+    clearTimeout(call.syncT);
+    call.syncT = setTimeout(() => callSend(callSnapshot()), 80);
+  }
+
+  // What the grown-up's screen needs to know (his name and photos are never sent).
+  function callSnapshot() {
+    const pic = (it) => (it.photo ? "📷" : it.p);
+    const s = { t: "state", screen, stars: data.stars, paused: anyPaused(), pauseKind, quiet: !!S().quiet,
+      sounds: Object.keys(SOUNDS).filter((k) => S().sounds[k].on), picks: S().sessionPicks, mins: sessionMins() };
+    if (screen === "play" && round) {
+      const it = currentItem();
+      s.play = { sound: round.sound, w: it.w, hl: it.hl || null, pair: it.pair || null, pp: it.pp || null, pic: pic(it),
+        level: (findLevel(round.sound, round.level) || {}).name || "", idx: round.idx, n: round.session ? 0 : round.items.length,
+        tries: round.tries, coach: round.coach, rec: rec.state, heard: !!rec.url, busy: round.busy, session: !!round.session };
+    }
+    if (session && session.bi >= 0 && session.bi < session.blocks.length) {
+      s.session = { blocks: session.blocks.map((b) => b.t), bi: session.bi, tries: session.tries, greats: session.greats,
+        left: session.left != null ? `${session.left} more, then ${nextIcon()}` : leftText() };
+    }
+    if (screen === "warm" && session && session.warm) { const { item, k } = warmNow(); s.warm = { sound: k, w: item.w, hl: item.hl || null, pair: item.pair || null, pp: item.pp || null, pic: pic(item) }; }
+    if (screen === "brk" && session && session.brk) s.brk = { opened: session.brk.opened, ready: session.brk.ready };
+    if (screen === "build" && build) {
+      const p = build.sel >= 0 ? build.kit.parts[build.sel] : null;
+      s.build = { kit: build.kit.name, e: build.kit.e, got: build.got.length, n: build.kit.parts.length, done: build.done,
+        sel: p ? { e: p[0], w: p[1], phrase: phraseFor(p[1]) } : null, modelled: build.modelled, wait: S().buildModel === "wait" };
+    }
+    if (screen === "reward" && reward) s.reward = { sticker: reward.sticker, build: !!reward.build, session: !!reward.session };
+    return s;
+  }
+
+  // Buttons the grown-up on the call may press, and the screens they work on.
+  const REMOTE_ACTS = {
+    great: ["play"], again: ["play"], skip: ["play"], listen: ["play"], "coach-say": ["play"],
+    "warm-next": ["warm"], "block-skip": ["warm"], "brk-go": ["brk"], "brk-open": ["brk"],
+    "b-give": ["build"], "b-say": ["build"], "b-gift": ["build"], open: ["reward"], "again-round": ["reward"],
+    "b-open": ["home", "reward"], start: ["home", "reward", "book"],
+  };
+  function onCallData(m) {
+    if (!m || typeof m !== "object") return;
+    if (m.t === "hello") { call.name = String(m.name || "Grown-up").slice(0, 24); updateCallInset(); sendState(); return; }
+    if (m.t === "end") { callDropped(true); return; }
+    if (m.t === "pause") { anyPaused() ? resumeAny() : pauseAny("pause"); return; }
+    if (m.t === "finish") { if (anyPaused()) finishAny(); else if (session) finishSessionNow(); else if (build) finishBuild(); else if (round && screen === "play") finishRound(); return; }
+    if (m.t === "quiet") { actions.quiet(); sendState(); return; }
+    if (m.t === "home") { if (session) finishSessionNow(); else show("home"); return; }
+    if (m.t === "session" && Array.isArray(m.sounds)) {
+      const ok = m.sounds.filter((k) => SOUNDS[k] && S().sounds[k].on).slice(0, 2);
+      if (ok.length && !session) { sessionPicks = ok; S().sessionPicks = ok.slice(); save(); startSession(); }
+      return;
+    }
+    if (m.t === "act" && REMOTE_ACTS[m.act] && REMOTE_ACTS[m.act].includes(screen) && !anyPaused()) {
+      if (m.act === "start" && !(SOUNDS[m.sound] && S().sounds[m.sound].on)) return;
+      if (m.act === "again-round" && (!round || reward.build || reward.session)) return;
+      actions[m.act]({ dataset: { sound: m.sound } });
+    }
+  }
+
+  async function startWaiting() {
+    if (call.state !== "off") return;
+    let Peer;
+    try { Peer = await loadPeer(); } catch (e) { toast("Couldn't reach the call service. Check the internet connection."); return; }
+    try { call.local = await navigator.mediaDevices.getUserMedia(VIDEO); }
+    catch (e) { toast("The camera or microphone is blocked. Allow them in the iPad's Settings → Safari.", 5000); return; }
+    const { id, key } = callIds();
+    const peer = new Peer(id);
+    call.peer = peer;
+    call.state = "waiting";
+    updateCallInset();
+    rerenderGrown();
+    peer.on("error", (e) => {
+      if (e && e.type === "unavailable-id") { toast("This iPad's call is already open somewhere else (another tab?)."); endCall(); }
+      else if (e && (e.type === "network" || e.type === "server-error" || e.type === "socket-error")) toast("Call connection problem. Check the internet.");
+    });
+    peer.on("disconnected", () => { if (call.peer === peer && !peer.destroyed) setTimeout(() => { try { peer.reconnect(); } catch (err) {} }, 1500); });
+    peer.on("connection", (conn) => {
+      const ok = conn.metadata && conn.metadata.k === key;
+      conn.on("open", () => {
+        if (!ok) { conn.close(); return; }
+        if (call.conn && call.conn !== conn) { try { call.conn.close(); } catch (err) {} }
+        call.conn = conn;
+        call.name = String(conn.metadata.name || "Grown-up").slice(0, 24);
+        call.state = "live";
+        updateCallInset();
+        rerenderGrown();
+        sendState();
+        toast(`📹 ${call.name} joined the call`);
+      });
+      conn.on("data", (m) => { if (ok && call.conn === conn) onCallData(m); });
+      conn.on("close", () => { if (call.conn === conn) callDropped(false); });
+    });
+    peer.on("call", (media) => {
+      if (!media.metadata || media.metadata.k !== key) { media.close(); return; }
+      if (call.media) { try { call.media.close(); } catch (err) {} }
+      call.media = media;
+      media.answer(call.local);
+      media.on("stream", (s) => { if (call.media === media) { call.remote = s; updateCallInset(); } });
+      media.on("close", () => { if (call.media === media) { call.media = null; call.remote = null; updateCallInset(); } });
+    });
+  }
+
+  // The other device left: keep waiting so they can come back in.
+  function callDropped(byThem) {
+    const name = call.name;
+    call.conn = null;
+    if (call.media) { try { call.media.close(); } catch (e) {} }
+    call.media = null;
+    call.remote = null;
+    call.big = false;
+    call.state = call.peer && !call.peer.destroyed ? "waiting" : "off";
+    updateCallInset();
+    rerenderGrown();
+    toast(byThem ? `📹 ${name || "The grown-up"} left the call.` : "📹 The call dropped. They can rejoin with the same link.");
+  }
+
+  function endCall() {
+    callSend({ t: "end" });
+    try { if (call.conn) call.conn.close(); } catch (e) {}
+    try { if (call.media) call.media.close(); } catch (e) {}
+    try { if (call.peer) call.peer.destroy(); } catch (e) {}
+    if (call.local) call.local.getTracks().forEach((t) => t.stop());
+    Object.assign(call, { peer: null, conn: null, media: null, local: null, remote: null, name: "", state: "off", big: false });
+    updateCallInset();
+    rerenderGrown();
+  }
+
+  async function shareCallLink() {
+    const url = callLink();
+    if (navigator.share) {
+      try { await navigator.share({ title: "Super Sounds video call", text: "Join the Super Sounds practice call:", url }); return; }
+      catch (e) { if (e && e.name === "AbortError") return; }
+    }
+    copyCallLink();
+  }
+  async function copyCallLink() {
+    try { await navigator.clipboard.writeText(callLink()); toast("Call link copied."); }
+    catch (e) { const el = document.getElementById("call-link"); if (el) { el.select(); toast("Select the link and copy it."); } }
+  }
+
+  function callPanelHTML() {
+    const st = call.state;
+    return `<h2>📹 Video call</h2>
+      <p class="note">A live video call with a grown-up somewhere else (a parent, grandparent or his therapist).
+        You see each other in a small window in the corner (tap it to make it bigger), and their screen gets the
+        ⭐ Great / 🔁 Again buttons and game controls, so he can play with nobody beside him.</p>
+      ${st === "off" ? `<button class="pill main" data-act="call-start" style="align-self:flex-start">📹 Start video call</button>
+        <p class="note">This turns on the camera and waits for them to join with this iPad's call link.</p>`
+      : st === "waiting" ? `<p><b>Waiting for someone to join…</b> Send them this link:</p>
+        <input type="text" id="call-link" class="call-link" readonly value="${esc(callLink())}">
+        <div class="actions" style="justify-content:flex-start">
+          <button class="pill main" data-act="call-share">📤 Send the link</button>
+          <button class="pill" data-act="call-copy">📋 Copy</button>
+          <button class="pill" data-act="call-stop">⏹ Stop waiting</button>
+        </div>
+        <p class="note">Keep the app open on this iPad. Tap ✅ at the top to go back to his games while you wait.</p>`
+      : `<p><b>📹 On a call with ${esc(call.name || "a grown-up")}.</b></p>
+        <button class="pill danger" data-act="call-stop" style="align-self:flex-start">📞 End call</button>`}
+      ${st === "off" ? `<button class="pill" data-act="call-new" style="align-self:flex-start">🔄 Make a new link</button>
+        <p class="note">Anyone with the link can join while this iPad is waiting. Making a new link stops the old one working.</p>` : ""}
+      <p class="note">Live only: nothing is recorded or saved. Video and sound go directly between the two devices, encrypted.
+        A free public service (PeerJS) only introduces them, and both need the internet. Some networks (school or office Wi-Fi,
+        some mobile data) can block calls. Speech therapists usually have to use an approved telehealth service for sessions,
+        so check with his before using this with them.</p>`;
+  }
+  function refreshCallPanel() { const el = document.getElementById("call-panel"); if (el) el.innerHTML = callPanelHTML(); }
+
+  // ---------- The small video window in the corner (tap to make it bigger) ----------
+  function makeCallInset() {
+    const el = document.createElement("div");
+    el.id = "call-inset";
+    el.className = "call-inset hidden";
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-label", "Video call. Tap to make it bigger or smaller.");
+    el.innerHTML = `<video id="call-remote" playsinline autoplay></video>
+      <video id="call-self" playsinline autoplay muted></video>
+      <span class="call-name" id="call-name"></span>
+      <span class="call-wait" id="call-wait">📹 Connecting…</span>
+      <button class="call-sound hidden" id="call-sound">🔈 Tap to hear</button>
+      <button class="call-end" id="call-end" aria-label="End the call">📞 End</button>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => {
+      const rv = document.getElementById("call-remote");
+      if (e.target.id === "call-end") { e.stopPropagation(); if (confirm("End the video call?")) (REMOTE_MODE ? remoteLeave() : endCall()); return; }
+      if (e.target.id === "call-sound") { e.stopPropagation(); rv.play().then(() => e.target.classList.add("hidden")).catch(() => {}); return; }
+      call.big = !call.big;
+      el.classList.toggle("big", call.big);
+      if (rv.paused && rv.srcObject) rv.play().catch(() => {});
+    });
+  }
+
+  function updateCallInset() {
+    const el = document.getElementById("call-inset");
+    if (!el) return;
+    const live = REMOTE_MODE ? !!remote.conn : call.state === "live";
+    if (!REMOTE_MODE) { document.body.classList.toggle("oncall", live); refreshCallPanel(); }
+    el.classList.toggle("hidden", !live || (REMOTE_MODE && !remote.inCall));
+    el.classList.toggle("big", !!call.big);
+    const rv = document.getElementById("call-remote"), sv = document.getElementById("call-self");
+    const rs = REMOTE_MODE ? remote.remote : call.remote, ls = REMOTE_MODE ? remote.local : call.local;
+    if (rv.srcObject !== rs) {
+      rv.srcObject = rs || null;
+      if (rs) rv.play().then(() => document.getElementById("call-sound").classList.add("hidden"))
+        .catch(() => document.getElementById("call-sound").classList.remove("hidden"));
+    }
+    if (sv.srcObject !== ls) sv.srcObject = ls || null;
+    document.getElementById("call-name").textContent = REMOTE_MODE ? "" : call.name;
+    document.getElementById("call-wait").classList.toggle("hidden", !!rs);
+  }
+
+  // =================================================================
+  //  📹 The grown-up's screen (opened from the call link)
+  // =================================================================
+  const remote = { peer: null, conn: null, media: null, local: null, remote: null, s: null, inCall: false,
+    picks: [], alert: null, alertT: 0 };
+  const NAME_KEY = "superSounds.callName";
+
+  function startRemote() {
+    document.body.classList.add("remote");
+    const big = document.getElementById("call-inset");
+    // On the grown-up's screen the child's video is the main picture, at the top of the page.
+    big.classList.add("remote-main");
+    document.body.insertBefore(big, app);
+    renderRemote();
+  }
+
+  async function remoteJoin() {
+    const name = (document.getElementById("r-name") || {}).value || localStorage.getItem(NAME_KEY) || "";
+    try { localStorage.setItem(NAME_KEY, name.slice(0, 24)); } catch (e) {}
+    remote.status = "Connecting…";
+    renderRemote();
+    let Peer;
+    try { Peer = await loadPeer(); } catch (e) { remote.status = "Couldn't reach the call service. Check the internet."; renderRemote(); return; }
+    try { remote.local = remote.local || await navigator.mediaDevices.getUserMedia(VIDEO); }
+    catch (e) { remote.status = "Your camera or microphone is blocked. Allow them in the browser and try again."; renderRemote(); return; }
+    const childId = CALL_Q.get("call"), k = CALL_Q.get("k");
+    const peer = new Peer();
+    remote.peer = peer;
+    peer.on("error", (e) => {
+      remote.status = e && e.type === "peer-unavailable"
+        ? "His iPad isn't waiting for a call. Ask someone there to open Grown-ups → 📹 Video call → Start video call, then tap Join again."
+        : "Call connection problem. Check the internet and try again.";
+      remoteCleanup(false);
+    });
+    peer.on("open", () => {
+      const meta = { k, name: name.slice(0, 24) || "Grown-up" };
+      const conn = peer.connect(childId, { metadata: meta, reliable: true });
+      remote.conn = conn;
+      conn.on("open", () => { remote.inCall = true; remote.status = ""; conn.send({ t: "hello", name: meta.name }); updateCallInset(); renderRemote(); });
+      conn.on("data", (m) => {
+        if (!m || typeof m !== "object") return;
+        if (m.t === "state") { remote.s = m; renderRemote(); }
+        else if (m.t === "alert") remoteAlert(m.kind);
+        else if (m.t === "end") { remote.status = "The call was ended on his iPad."; remoteCleanup(false); }
+      });
+      conn.on("close", () => { if (remote.conn === conn) { remote.status = "The call ended."; remoteCleanup(false); } });
+      const media = peer.call(childId, remote.local, { metadata: meta });
+      remote.media = media;
+      media.on("stream", (s) => { remote.remote = s; updateCallInset(); });
+    });
+  }
+
+  function remoteCleanup(stopCamera) {
+    try { if (remote.conn) remote.conn.close(); } catch (e) {}
+    try { if (remote.media) remote.media.close(); } catch (e) {}
+    try { if (remote.peer) remote.peer.destroy(); } catch (e) {}
+    remote.conn = remote.media = remote.peer = remote.remote = null;
+    remote.inCall = false;
+    remote.s = null;
+    if (stopCamera && remote.local) { remote.local.getTracks().forEach((t) => t.stop()); remote.local = null; }
+    updateCallInset();
+    renderRemote();
+  }
+  function remoteLeave() { if (remote.conn && remote.conn.open) { try { remote.conn.send({ t: "end" }); } catch (e) {} } remote.status = "You left the call."; setTimeout(() => remoteCleanup(true), 150); }
+
+  function remoteAlert(kind) {
+    remote.alert = kind === "done" ? "👋 He tapped All done" : "✋ He tapped Break";
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    clearTimeout(remote.alertT);
+    remote.alertT = setTimeout(() => { remote.alert = null; renderRemote(); }, 8000);
+    renderRemote();
+  }
+
+  const rSend = (m) => { if (remote.conn && remote.conn.open) { try { remote.conn.send(m); } catch (e) {} } };
+  const rAct = (act, extra) => rSend(Object.assign({ t: "act", act }, extra || {}));
+
+  function remoteWordHTML(sound, item) {
+    const c = coachOf(sound);
+    return `<div class="r-word" style="${soundVars(sound)}">
+        ${item.pair ? `<div class="pair">${esc(item.pp || "")} ${esc(item.pair)} ➜</div>` : ""}
+        <span class="r-pic" aria-hidden="true">${item.pic || ""}</span>
+        <span class="word">${highlightItem(sound, { w: item.w, hl: item.hl })}</span>
+      </div>
+      <p class="r-tip">${c.pic} <b>${esc(SOUNDS[sound].label)}:</b> ${esc(c.how || "")}${c.hint ? ` · ${esc(c.hint)}` : ""}</p>`;
+  }
+
+  function renderRemote() {
+    const s = remote.s;
+    const name = localStorage.getItem(NAME_KEY) || "";
+    let body;
+    if (!remote.inCall) {
+      body = `<div class="r-join">
+          <h1>📹 Super Sounds call</h1>
+          <p>Join a practice call with his iPad. You'll see and hear each other, and you'll have the ⭐ Great / 🔁 Again buttons.</p>
+          <label class="field">Your name (he sees it in the video)
+            <input type="text" id="r-name" maxlength="24" value="${esc(name)}" placeholder="e.g. Grandma" autocomplete="off"></label>
+          <button class="pill main" data-r="join">📹 Join with camera</button>
+          ${remote.status ? `<p class="r-status">${esc(remote.status)}</p>` : ""}
+          <p class="note">Live only: nothing is recorded. Your video goes straight to his iPad, encrypted.</p>
+        </div>`;
+    } else if (!s) {
+      body = `<p class="r-status">Connected. Waiting for his iPad…</p>`;
+    } else {
+      body = remoteBodyHTML(s);
+    }
+    app.innerHTML = `<div class="screen remote-screen">
+        ${remote.alert ? `<div class="r-alert" role="alert">${esc(remote.alert)} · <button class="pill" data-r="ack">OK</button></div>` : ""}
+        ${body}
+      </div>`;
+  }
+
+  function remoteBodyHTML(s) {
+    const top = s.session ? `<div class="r-strip">${s.session.blocks.map((t, i) =>
+        `<span class="sstep ${i < s.session.bi ? "done" : i === s.session.bi ? "now" : ""}">${BLOCK_ICON[t]}</span>`).join("")}
+        <span class="sstep">🎁</span><small>${esc(s.session.left || "")} · ${s.session.tries} tries · ⭐ ${s.session.greats}</small></div>` : "";
+    const controls = `<div class="r-bar">
+        <button class="pill" data-r="pause">${s.paused ? "▶️ Keep going" : "⏸️ Pause"}</button>
+        <button class="pill" data-r="quiet">🤫 Quiet: ${s.quiet ? "on" : "off"}</button>
+        ${s.screen !== "home" ? `<button class="pill" data-r="home">🏠 ${s.session ? "Finish" : "Home"}</button>` : ""}
+        <button class="pill danger" data-r="leave">📞 Leave</button>
+      </div>`;
+    let main = "";
+    if (s.paused) {
+      main = `<div class="r-card"><h2>${s.pauseKind === "done" ? "👋 He asked to stop" : s.pauseKind === "break" ? "✋ He asked for a break" : "⏸️ Paused"}</h2>
+        <div class="r-btns"><button class="judge great" data-r="pause">▶️ Keep going</button>
+        <button class="judge again" data-r="finish">🏁 Finish now</button></div></div>`;
+    } else if (s.screen === "play" && s.play) {
+      const p = s.play;
+      const recTxt = { listening: "👂 Listening for him…", recording: "🎤 Recording…", starting: "🎤 Starting the mic…" }[p.rec]
+        || (p.heard ? "✓ He's had a go: judge it" : "Waiting for him to say it");
+      main = `<div class="r-card">
+          <p class="r-where">${esc(SOUNDS[p.sound].label)} · ${esc(p.level)}${p.n ? ` · word ${p.idx + 1} of ${p.n}` : ""}${p.tries ? ` · try ${p.tries + 1}` : ""}</p>
+          ${remoteWordHTML(p.sound, p)}
+          <p class="r-rec ${p.heard ? "ready" : ""}">${recTxt}</p>
+          <div class="r-btns">
+            <button class="judge great" data-r="great" ${p.busy ? "disabled" : ""}>⭐ Great!</button>
+            <button class="judge again" data-r="again" ${p.busy ? "disabled" : ""}>🔁 Again</button>
+            <button class="judge skip" data-r="skip" ${p.busy ? "disabled" : ""}>Skip ➜</button>
+          </div>
+          <div class="r-btns small"><button class="pill" data-r="listen">🔊 Say the word again</button>
+            ${p.coach >= 2 ? "" : `<button class="pill" data-r="coach-say">🔊 The sound on its own</button>`}</div>
+          <p class="note">Judge only the target sound. You hear him live on the call.</p>
+        </div>`;
+    } else if (s.screen === "warm" && s.warm) {
+      main = `<div class="r-card"><p class="r-where">👂 Listening warm-up: he just listens</p>
+          ${remoteWordHTML(s.warm.sound, s.warm)}
+          <div class="r-btns"><button class="judge again" data-r="warm-next">Next word ➜</button>
+          <button class="judge skip" data-r="block-skip">Skip listening ➜</button></div></div>`;
+    } else if (s.screen === "brk" && s.brk) {
+      main = `<div class="r-card"><h2>🎈 Wiggle break</h2><p>${s.brk.opened ? "He's opened his present. Moves are on his screen." : "He's opening a present."}</p>
+          <div class="r-btns">${s.brk.opened ? "" : `<button class="judge again" data-r="brk-open">🎁 Open it for him</button>`}
+          <button class="judge great" data-r="brk-go">▶️ Back to practice</button></div></div>`;
+    } else if (s.screen === "build" && s.build) {
+      const b = s.build;
+      main = `<div class="r-card"><p class="r-where">🔧 Building the ${esc(b.kit)} ${b.e} · ${b.got} of ${b.n} parts</p>
+          ${b.done ? `<h2>He built it! 🎉</h2><div class="r-btns"><button class="judge great" data-r="b-gift">🎁 Open the present</button></div>`
+          : b.sel ? `<div class="r-word"><span class="r-pic">${b.sel.e}</span><span class="word">“${esc(b.sel.phrase)}”</span></div>
+            <p class="r-rec">${b.wait && !b.modelled ? "⏳ Waiting 5 seconds for him to ask on his own…" : "The iPad has said it for him"}</p>
+            <div class="r-btns"><button class="judge great" data-r="b-give">✅ He asked!</button>
+            <button class="judge again" data-r="b-say">🔊 Say it for him</button></div>`
+          : `<p>He's choosing a part on his screen…</p>`}</div>`;
+    } else if (s.screen === "reward" && s.reward) {
+      main = `<div class="r-card"><h2>🎁 Present time</h2><p>He's opening his present.</p>
+          <div class="r-btns"><button class="judge again" data-r="open">🎁 Open it for him</button>
+          ${!s.reward.build && !s.reward.session ? `<button class="judge great" data-r="again-round">🔁 Play again</button>` : ""}
+          ${s.reward.build ? `<button class="judge great" data-r="b-open">🔧 Build again</button>` : ""}</div></div>`;
+    }
+    if (!main || s.screen === "home" || s.screen === "book" || (s.screen === "reward" && !s.reward)) {
+      const chips = s.sounds.map((k) => `<button class="r-chip ${remote.picks.includes(k) ? "on" : ""}" style="${soundVars(k)}" data-r="pick" data-k="${k}">
+          ${SOUNDS[k].cue} ${esc(SOUNDS[k].label)}</button>`).join("");
+      main = (main || "") + `<div class="r-card"><h2>What next?</h2>
+          <p class="note">Tap a sound to start a round on his iPad, or pick 1–2 sounds for Practice time.</p>
+          <div class="r-chips">${chips}</div>
+          <div class="r-btns">
+            <button class="judge great" data-r="round" ${remote.picks.length === 1 ? "" : "disabled"}>▶️ Round</button>
+            <button class="judge again" data-r="session" ${remote.picks.length ? "" : "disabled"}>⏱️ ${s.mins} min Practice time</button>
+            <button class="judge skip" data-r="b-open">🔧 Build-it</button>
+          </div>
+          ${s.screen !== "home" && s.screen !== "reward" ? `<p class="note">He's on another screen (${esc(s.screen)}).</p>` : ""}</div>`;
+    }
+    return `${top}${main}${controls}`;
+  }
+
+  if (REMOTE_MODE) {
+    app.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-r]");
+      if (!b || b.disabled) return;
+      const r = b.dataset.r;
+      if (r === "join") remoteJoin();
+      else if (r === "leave") { if (confirm("Leave the call?")) remoteLeave(); }
+      else if (r === "ack") { remote.alert = null; renderRemote(); }
+      else if (r === "pause") rSend({ t: "pause" });
+      else if (r === "finish") rSend({ t: "finish" });
+      else if (r === "quiet") rSend({ t: "quiet" });
+      else if (r === "home") rSend({ t: "home" });
+      else if (r === "pick") {
+        const k = b.dataset.k;
+        remote.picks = remote.picks.includes(k) ? remote.picks.filter((x) => x !== k) : remote.picks.concat(k).slice(-2);
+        renderRemote();
+      } else if (r === "round") { rAct("start", { sound: remote.picks[0] }); remote.picks = []; }
+      else if (r === "session") { rSend({ t: "session", sounds: remote.picks }); remote.picks = []; }
+      else rAct(r);
+    });
+  }
+
   // ---------- Reward ----------
   function renderReward() {
     const th = theme();
@@ -2249,6 +2984,7 @@
         <header class="book-head">
           <button class="icon-btn" data-act="home" aria-label="Home">🏠</button>
           <h1>${th.mascot} My sticker book</h1>
+          ${data.starClips.length ? `<button class="pill main" data-act="stars" aria-label="My best sounds">🎬<span class="wide-only"> My best sounds</span></button>` : ""}
           <span class="book-count">${have.length} of ${th.stickers.length}</span>
         </header>
         <div class="book-grid">${slots}</div>
@@ -2328,7 +3064,7 @@
   let voicePick = null;   // which sound/level the voice list shows
 
   function rerenderGrown() {
-    if (screen !== "grown") return;
+    if (REMOTE_MODE || screen !== "grown") return;
     const y = window.scrollY;
     render();
     window.scrollTo(0, y);
@@ -2651,6 +3387,28 @@
           <button class="pill" data-act="test-voice" style="align-self:flex-start">🔊 Test the voice</button>
         </section>
 
+        <section class="panel" id="call-panel">${callPanelHTML()}</section>
+
+        <section class="panel">
+          <h2>🎬 Star clips</h2>
+          <p class="note">Records video while he says each word, and keeps the ones you mark ⭐ Great. He can watch them in
+            📖 Sticker book → 🎬 My best sounds, and the next time a word comes up he can watch himself say it first.
+            Seeing himself get it right is a strong prompt (video self-modelling). Kept on this iPad only, never online and
+            never in the Voice report. For his progress history it keeps his <b>first ever ⭐</b> of each word, plus the newest 2. Clips are small
+            (they start when he starts talking), and the oldest non-first clips are removed if they pass 150 MB.</p>
+          <label class="toggle"><input type="checkbox" data-set="starClips" ${st.starClips ? "checked" : ""}>
+            <span>Record video of his tries and keep the ⭐ Great ones (the camera is on during his turn)</span></label>
+          <div class="field">Use his clips as the example
+            ${radioGroup("starPrompt", [["button", "🎬 Watch me button"], ["auto", "Play instead of the iPad voice"], ["off", "Don't use"]], st.starPrompt)}
+            <span class="note">"Play instead" shows his ⭐ clip of the word, then listens for his turn. Words without a clip use the iPad voice.</span>
+          </div>
+          <p class="note" id="stars-saved">${starCountText()}</p>
+          <div class="actions" style="justify-content:flex-start">
+            <button class="pill" data-act="stars-export">📤 Save all to Files</button>
+            <button class="pill danger" data-act="stars-delete">🗑 Delete all clips</button>
+          </div>
+        </section>
+
         <section class="panel">
           <h2>🎙️ Voice report (optional)</h2>
           <p class="note">Keep his tries so a report tool on your computer can listen to them and write a report on how he did.
@@ -2677,7 +3435,8 @@
         <section class="panel">
           <h2>Privacy &amp; reset</h2>
           <p class="note">Everything stays on this iPad. His own recordings are not saved: each one is deleted as
-            soon as he moves to the next word, unless you turn on 🎙️ Voice report. Then his tries stay on this iPad until you export or delete them. Grown-up recordings and My words photos are kept on this iPad until
+            soon as he moves to the next word, unless you turn on 🎙️ Voice report or 🎬 Star clips. Then they stay on this iPad until you
+            export or delete them. 📹 Video calls are live only and never recorded. Grown-up recordings and My words photos are kept on this iPad until
             you delete them (deleting the app from the Home Screen erases them too). No accounts, ads or tracking.</p>
           <div class="actions" style="justify-content:flex-start">
             <button class="pill danger" data-act="reset-progress">Reset progress &amp; stars</button>
@@ -2697,12 +3456,12 @@
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
       case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree": case "realSounds":
-      case "kidStop": case "autoHear": case "buildBtn": case "saveTries":
+      case "kidStop": case "autoHear": case "buildBtn": case "saveTries": case "starClips":
         st[key] = el.checked; break;
       case "quiet": st.quiet = el.checked; applyQuiet(); break;
       case "warnWords": case "triesGoal": case "fxVol": st[key] = Number(el.value); break;
       case "greatFx": st.greatFx = el.value; break;
-      case "buildLevel": case "buildModel": st[key] = el.value; break;
+      case "buildLevel": case "buildModel": case "starPrompt": st[key] = el.value; break;
       case "voiceLevel": st.voiceLevel = el.value; break;
       case "sessionMins": {
         st.sessionMins = Number(el.value);
@@ -2747,6 +3506,35 @@
     "b-say": () => modelPart(),
     "b-gift": () => finishBuild(),
     "tries-export": () => exportTries(),
+    "call-start": () => startWaiting(),
+    "star-play": () => {
+      const item = round && currentItem(), s = item && starFor(round.sound, item);
+      if (!s) return;
+      resetRecording(); updateKidRow();
+      round.sayTok++;
+      playStar(s, () => { if (round && screen === "play") maybeListen(); });
+    },
+    stars: () => show("stars"),
+    "star-view": (b) => openStarView(b.dataset.id),
+    "star-close": () => closeStarView(),
+    "stars-export": () => exportStars(),
+    "stars-delete": async () => {
+      if (!data.starClips.length) { toast("No star clips."); return; }
+      if (confirm(`Delete all ${data.starClips.length} star clips from this iPad? This can't be undone.`)) {
+        try { await idbClear("stars"); } catch (e) {}
+        data.starClips = [];
+        save();
+        rerenderGrown();
+        toast("Star clips deleted.");
+      }
+    },
+    "call-stop": () => endCall(),
+    "call-share": () => shareCallLink(),
+    "call-copy": () => copyCallLink(),
+    "call-new": () => {
+      if (call.state !== "off") return;
+      if (confirm("Make a new call link? The old link will stop working.")) { data.call = null; callIds(); rerenderGrown(); toast("New call link made."); }
+    },
     "tries-delete": async () => {
       let n = 0;
       try { n = (await idbKeys("tries")).length; } catch (e) {}
@@ -2882,8 +3670,9 @@
   // =================================================================
   //  Start
   // =================================================================
-  applyQuiet();
-  render();
+  makeCallInset();
+  if (REMOTE_MODE) startRemote();
+  else { applyQuiet(); render(); }
 
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
     navigator.serviceWorker.register("sw.js").catch(() => {});

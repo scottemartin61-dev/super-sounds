@@ -1,6 +1,6 @@
 // Offline support: serve the saved copy instantly, refresh it in the background.
 // Bump VERSION when you change files so iPads pick up the update.
-const VERSION = "super-sounds-v18";
+const VERSION = "super-sounds-v19";
 const ASSETS = [
   "./",
   "./index.html",

@@ -78,6 +78,26 @@ Stickers like 🐮 🚂 📷 make a real recorded sound when he finds them, and 
 The toilet theme flushes on ⭐ Great. You can switch these off in Grown-ups → Game settings, and test each one there first.
 The sounds are free public-domain recordings from BigSoundBank.com ([CREDITS.md](CREDITS.md)).
 
+### 📹 Video call
+His iPad and a grown-up somewhere else (a parent, grandparent or his therapist) can see and hear each other. On his iPad, Grown-ups →
+📹 Video call → **Start video call**, then **Send the link**. The grown-up opens the link on their phone, tablet or computer and taps Join.
+On his iPad the grown-up appears in a small window in the corner; tap it to make it bigger (with his own picture, and an End button).
+The grown-up's screen shows him on video, the word he's on with the target sound highlighted and a coaching tip, and the
+⭐ Great / 🔁 Again / Skip buttons. They can also start a round, Practice time or Build-it, pause, and turn on Quiet mode.
+They get an alert when he taps ✋ Break or 👋 All done. Live only, never recorded. Both devices need the internet; some networks
+(school or office Wi-Fi, some mobile data) can block calls. Speech therapists usually have to use an approved telehealth service,
+so check with his before using it for sessions.
+
+### 🎬 Star clips (optional, off by default)
+With Grown-ups → 🎬 Star clips on, the camera records him while he says each word, and the tries you mark ⭐ Great are kept on the iPad.
+- **Watch yourself:** the next time that word comes up he can watch his own ⭐ clip first (a 🎬 Watch me button, or played instead of
+  the iPad voice). Seeing yourself get it right is a strong prompt (video self-modelling).
+- **Progress history:** 📖 Sticker book → 🎬 **My best sounds** shows each word with his **first ever ⭐** and his **newest**, so you
+  can see how far he's come.
+- **Kept small:** clips start when he starts talking and are recorded small (about 100–250 KB). For each word the first ⭐ is kept
+  for good, plus the newest 2. If they pass 150 MB, the oldest non-first clips are removed.
+- **📤 Save all to Files** makes one .zip of the videos; **🗑 Delete all clips** clears them. Never online and never in the Voice report.
+
 ### 🎙️ Voice report (optional, off by default)
 Grown-ups → 🎙️ Voice report → **Save his tries for a voice report** keeps his judged tries on the iPad with only the word,
 sound, level, your ⭐/🔁 and the day. No name, and My words are never saved. **📤 Export for report** makes one .zip to copy
@@ -112,6 +132,8 @@ Then open http://localhost:8080.
 
 ## Privacy
 There are no accounts, ads or tracking. His recordings are kept in memory only and deleted when he moves to the next word,
-unless a grown-up turns on 🎙️ Voice report. Then his tries stay on the iPad until they're exported or deleted.
+unless a grown-up turns on 🎙️ Voice report or 🎬 Star clips. Then they stay on the iPad until they're exported or deleted.
+📹 Video calls are live only: nothing is recorded. Video and sound go directly between the two devices, encrypted, and a free
+public service (PeerJS) only introduces them.
 Grown-up recordings, My words and their photos are saved on the iPad until you delete them.
 Everything else (settings, stars, stickers, progress) stays in the iPad's local storage too.

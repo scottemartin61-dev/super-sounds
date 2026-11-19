@@ -3,6 +3,23 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v19 · 2026-11-19 · 📹 Video call and 🎬 Star clips
+- **📹 Video call.** His iPad and a grown-up somewhere else can see and hear each other. Grown-ups → 📹 Video call →
+  Start video call → Send the link; the grown-up opens it on any phone, tablet or computer and taps Join.
+  - On his iPad the grown-up appears in a **small window in the corner**; tap it to make it bigger (with his own picture and an End button).
+  - The grown-up's screen shows him on video, the word with the target sound highlighted, a coaching tip, and
+    **⭐ Great / 🔁 Again / Skip**. They can start a round, Practice time or Build-it, pause, finish, and turn on Quiet mode,
+    and they get an alert when he taps ✋ Break or 👋 All done. His iPad hides its grown-up buttons during a call.
+  - Live only: nothing is recorded. The devices connect directly (encrypted); a free public service (PeerJS) introduces them.
+    No account needed. Anyone with the link can join while the iPad is waiting; "Make a new link" stops old links working.
+- **🎬 Star clips** (off by default). Records video while he says each word and keeps the ⭐ Great ones on the iPad.
+  - **Watch yourself:** next time the word comes up, a 🎬 Watch me button plays his own ⭐ clip, or (setting) it plays
+    instead of the iPad voice and then listens for his turn.
+  - **🎬 My best sounds** (in the Sticker book): each word with his **first ever ⭐** and his **newest**, as his progress history.
+  - Kept small: clips start once he starts talking, at a low bitrate; per word the first ⭐ is kept plus the newest 2;
+    150 MB limit, removing the oldest non-first clips first. **📤 Save all to Files** and **🗑 Delete all clips** in Grown-ups.
+- During a call, recording, the mirror and Build-it share the call's camera and mic instead of opening new ones.
+
 ## v18 · 2026-11-19 · Hands-free on by default
 - **Hands-free** is now on by default: after each word is said, the app starts listening for him by itself.
   This applies to a fresh install (for example after re-adding the Home Screen icon). An iPad that has already been
