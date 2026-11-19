@@ -24,7 +24,7 @@ Only the sounds a grown-up ticks show on his home screen. New sounds live in [wo
 ## How a round works
 1. He taps a sound. The iPad says each word slowly. Tap 🔊 to hear it again.
 2. He taps 🎤 **My turn** and says the word. A **big-voice meter** fills up as he talks, to encourage speaking out loud rather than whispering. 👂 **Hear me** plays his voice back.
-   With **Hands-free** on (Grown-ups → Game settings), he doesn't need to tap: after the word is said, the app listens by itself (the button shows "Listening…"), keeps his word once he starts talking, and stops when he goes quiet. If he says nothing for 6 seconds it stops quietly. Background noise or a grown-up talking can also set it off.
+   **Hands-free** is on by default (switch it off in Grown-ups → Game settings): he doesn't need to tap: after the word is said, the app listens by itself (the button shows "Listening…"), keeps his word once he starts talking, and stops when he goes quiet. If he says nothing for 6 seconds it stops quietly. Background noise or a grown-up talking can also set it off.
 3. A grown-up taps ⭐ **Great!** or 🔁 **Again**. After a miss the game coaches him:
    - 1st miss: the word again, more slowly, with a "how to make it" card (picture and tip). The card has a 🪞 **Mirror** button that shows the front camera so he can watch his mouth. Nothing is recorded.
    - 2nd miss: the sound on its own first, then the word ("guh, guh, guh … goat").

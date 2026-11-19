@@ -3,6 +3,11 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v18 · 2026-11-19 · Hands-free on by default
+- **Hands-free** is now on by default: after each word is said, the app starts listening for him by itself.
+  This applies to a fresh install (for example after re-adding the Home Screen icon). An iPad that has already been
+  used keeps its current setting. Switch it on or off in Grown-ups → Game settings.
+
 ## v17 · 2026-11-18 · 🎙️ Voice report (optional, off by default)
 - New Grown-ups → **🎙️ Voice report**. With **Save his tries for a voice report** on, each judged try is kept on the iPad
   with only the practice word, sound, level, the grown-up's ⭐/🔁, the day and a random session number.

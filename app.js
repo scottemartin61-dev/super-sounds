@@ -42,7 +42,7 @@
     voiceLevel: "medium",
     useMyVoice: true,   // play a grown-up's recording instead of the iPad voice when there is one
     mixMine: true,      // mix "My words" into normal rounds
-    handsFree: false,   // start listening by itself after the word is said
+    handsFree: true,    // start listening by itself after the word is said (on by default)
     realSounds: true,   // recorded animal / vehicle / flush sounds
     sessionMins: 15,    // Practice time length (5 / 10 / 15)
     sessionBtn: true,   // show the Practice time button on the home screen
