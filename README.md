@@ -80,11 +80,14 @@ The sounds are free public-domain recordings from BigSoundBank.com ([CREDITS.md]
 
 ### 📹 Video call
 His iPad and a grown-up somewhere else (a parent, grandparent or his therapist) can see and hear each other. On his iPad, Grown-ups →
-📹 Video call → **Start video call**, then **Send the link**. The grown-up opens the link on their phone, tablet or computer and taps Join.
+📹 Video call → **Start video call**, then **Send the link** (or let them scan the QR code with their phone's camera).
+The grown-up opens the link on their phone, tablet or computer and taps Join.
 On his iPad the grown-up appears in a small window in the corner; tap it to make it bigger (with his own picture, and an End button).
 The grown-up's screen shows him on video, the word he's on with the target sound highlighted and a coaching tip, and the
 ⭐ Great / 🔁 Again / Skip buttons. They can also start a round, Practice time or Build-it, pause, and turn on Quiet mode.
-They get an alert when he taps ✋ Break or 👋 All done. Live only, never recorded. Both devices need the internet; some networks
+They get an alert when he taps ✋ Break or 👋 All done.
+They also have **🎙️ Mute me**, and **📝 Notes**: notes typed during the call are tagged with the time and the word he's on,
+with a count of ⭐ / 🔁 per word, and **📤 Share notes** sends them as text. Notes stay on the grown-up's device. Live only, never recorded. Both devices need the internet; some networks
 (school or office Wi-Fi, some mobile data) can block calls. Speech therapists usually have to use an approved telehealth service,
 so check with his before using it for sessions.
 

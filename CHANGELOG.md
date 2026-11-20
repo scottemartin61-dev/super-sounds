@@ -3,6 +3,15 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v20 · 2026-11-20 · Video call: QR code, mute and notes
+- **QR code:** while his iPad waits for someone to join, Grown-ups → 📹 Video call shows a **QR code** of the call link.
+  The other grown-up can scan it with their phone's camera instead of being sent the link.
+- **🎙️ Mute me** on the grown-up's call screen turns their microphone off and on. He can still be heard.
+- **📝 Notes** on the grown-up's call screen: type notes during the call. Each one is tagged with the time and the word
+  he's on, and the ⭐ / 🔁 / Skip taps are counted per word as a summary. **📤 Share notes** sends them as text (or saves a
+  .txt file). Notes from earlier calls are kept under 🗂 Earlier calls. They stay on that grown-up's device and are never
+  sent to his iPad.
+
 ## v19 · 2026-11-19 · 📹 Video call and 🎬 Star clips
 - **📹 Video call.** His iPad and a grown-up somewhere else can see and hear each other. Grown-ups → 📹 Video call →
   Start video call → Send the link; the grown-up opens it on any phone, tablet or computer and taps Join.

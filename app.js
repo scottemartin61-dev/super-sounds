@@ -2481,6 +2481,34 @@
     return peerLoad;
   }
 
+  // QR code of the call link, so the other grown-up can scan it with their phone's camera.
+  const QR_URL = "https://unpkg.com/qrcode-generator@1.4.4/qrcode.js";
+  let qrLoad = null, qrCache = { url: "", img: "" };
+  function callQRHTML() {
+    const url = callLink();
+    if (qrCache.url !== url && typeof window.qrcode === "function") {
+      try {
+        const qr = window.qrcode(0, "M");
+        qr.addData(url);
+        qr.make();
+        qrCache = { url, img: qr.createDataURL(8, 4) };
+      } catch (e) { qrCache = { url, img: "" }; }
+    }
+    if (qrCache.url === url && qrCache.img) {
+      return `<img class="call-qr" src="${qrCache.img}" alt="QR code of the call link">`;
+    }
+    if (typeof window.qrcode !== "function" && !qrLoad) {
+      qrLoad = new Promise((resolve) => {
+        const s = document.createElement("script");
+        s.src = QR_URL;
+        s.onload = () => { resolve(); refreshCallPanel(); };
+        s.onerror = () => { qrLoad = null; resolve(); };
+        document.head.appendChild(s);
+      });
+    }
+    return `<div class="call-qr call-qr-wait">Making the QR code…</div>`;
+  }
+
   // While a call is on, recording, the mirror and Build-it borrow the call's mic / camera
   // (asking for a second one can switch the first one off on iPads).
   const liveTrack = (kind) => {
@@ -2656,7 +2684,9 @@
         ⭐ Great / 🔁 Again buttons and game controls, so he can play with nobody beside him.</p>
       ${st === "off" ? `<button class="pill main" data-act="call-start" style="align-self:flex-start">📹 Start video call</button>
         <p class="note">This turns on the camera and waits for them to join with this iPad's call link.</p>`
-      : st === "waiting" ? `<p><b>Waiting for someone to join…</b> Send them this link:</p>
+      : st === "waiting" ? `<p><b>Waiting for someone to join…</b> If they're with you, they can scan this with their phone's camera:</p>
+        ${callQRHTML()}
+        <p>Or send them this link:</p>
         <input type="text" id="call-link" class="call-link" readonly value="${esc(callLink())}">
         <div class="actions" style="justify-content:flex-start">
           <button class="pill main" data-act="call-share">📤 Send the link</button>
@@ -2731,6 +2761,7 @@
     // On the grown-up's screen the child's video is the main picture, at the top of the page.
     big.classList.add("remote-main");
     document.body.insertBefore(big, app);
+    makeRemoteTools();
     renderRemote();
   }
 
@@ -2756,7 +2787,12 @@
       const meta = { k, name: name.slice(0, 24) || "Grown-up" };
       const conn = peer.connect(childId, { metadata: meta, reliable: true });
       remote.conn = conn;
-      conn.on("open", () => { remote.inCall = true; remote.status = ""; conn.send({ t: "hello", name: meta.name }); updateCallInset(); renderRemote(); });
+      conn.on("open", () => {
+        remote.inCall = true; remote.status = ""; remote.muted = false;
+        conn.send({ t: "hello", name: meta.name });
+        notesStart();
+        updateCallInset(); renderRemote();
+      });
       conn.on("data", (m) => {
         if (!m || typeof m !== "object") return;
         if (m.t === "state") { remote.s = m; renderRemote(); }
@@ -2777,6 +2813,7 @@
     remote.conn = remote.media = remote.peer = remote.remote = null;
     remote.inCall = false;
     remote.s = null;
+    if (stopCamera) remote.muted = false;
     if (stopCamera && remote.local) { remote.local.getTracks().forEach((t) => t.stop()); remote.local = null; }
     updateCallInset();
     renderRemote();
@@ -2827,6 +2864,167 @@
         ${remote.alert ? `<div class="r-alert" role="alert">${esc(remote.alert)} · <button class="pill" data-r="ack">OK</button></div>` : ""}
         ${body}
       </div>`;
+    renderTools();
+  }
+
+  // ---------- 🎙️ Mute and 📝 Notes, for the grown-up (kept outside #app so typing isn't lost on updates) ----------
+  // Notes stay on this grown-up's device only: they're never sent to his iPad.
+  const NOTES_KEY = "superSounds.callNotes";
+  const rn = { cur: null, open: false };
+  function notesAll() { try { return JSON.parse(localStorage.getItem(NOTES_KEY)) || []; } catch (e) { return []; } }
+  function notesPut(list) {
+    try { localStorage.setItem(NOTES_KEY, JSON.stringify(list.slice(-30))); }
+    catch (e) { toast("Couldn't save the notes on this device. Share them now so they aren't lost."); }
+  }
+  function notesStart() {
+    const list = notesAll();
+    const id = randId(8);
+    list.push({ id, start: Date.now(), end: Date.now(), notes: [], tally: {} });
+    notesPut(list);
+    rn.cur = id;
+  }
+  function notesEdit(fn, id) {
+    const list = notesAll();
+    const x = list.find((c) => c.id === (id || rn.cur));
+    if (!x) return;
+    fn(x);
+    x.end = Date.now();
+    notesPut(list);
+    renderTools();
+  }
+  function nowWhere() {
+    const s = remote.s;
+    if (!s) return "";
+    if (s.screen === "play" && s.play) return `${SOUNDS[s.play.sound] ? SOUNDS[s.play.sound].label : ""} · ${s.play.w}`;
+    if (s.screen === "warm" && s.warm) return `Listening · ${s.warm.w}`;
+    if (s.screen === "build" && s.build) return `Build-it${s.build.sel ? " · " + s.build.sel.phrase : ""}`;
+    return "";
+  }
+  function addNote() {
+    const ta = document.getElementById("r-note");
+    const text = ta && ta.value.trim();
+    if (!text) { if (ta) ta.focus(); return; }
+    if (!rn.cur) notesStart();
+    notesEdit((x) => x.notes.push({ t: Date.now(), at: nowWhere(), text: text.slice(0, 2000) }));
+    ta.value = "";
+    ta.focus();
+  }
+  // Each ⭐ / 🔁 / Skip is counted per word, so the notes have a summary of the call.
+  function tallyJudge(r) {
+    const s = remote.s;
+    if (!rn.cur || !s || s.screen !== "play" || !s.play || s.play.busy) return;
+    const k = nowWhere();
+    notesEdit((x) => { const t = x.tally[k] || (x.tally[k] = { g: 0, a: 0, s: 0 }); t[{ great: "g", again: "a", skip: "s" }[r]]++; });
+  }
+  const clock = (t) => new Date(t).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const longDay = (t) => new Date(t).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  function tallySum(x) {
+    const v = Object.values(x.tally || {});
+    return { g: v.reduce((a, t) => a + t.g, 0), a: v.reduce((a, t) => a + t.a, 0), s: v.reduce((a, t) => a + t.s, 0) };
+  }
+  function notesText(x) {
+    const sum = tallySum(x);
+    const mins = Math.max(1, Math.round((x.end - x.start) / 60000));
+    const lines = [`Super Sounds call notes`, `${longDay(x.start)}, ${clock(x.start)} (about ${mins} min)`, ""];
+    if (sum.g + sum.a + sum.s) {
+      lines.push(`Judged: ⭐ Great ${sum.g} · 🔁 Again ${sum.a}${sum.s ? ` · Skipped ${sum.s}` : ""}`);
+      for (const [k, t] of Object.entries(x.tally)) lines.push(`  ${k}: ⭐ ${t.g}  🔁 ${t.a}${t.s ? `  skipped ${t.s}` : ""}`);
+      lines.push("");
+    }
+    lines.push("Notes:");
+    if (!x.notes.length) lines.push("  (none)");
+    for (const n of x.notes) lines.push(`  ${clock(n.t)}${n.at ? ` [${n.at}]` : ""} ${n.text}`);
+    return lines.join("\n");
+  }
+  async function shareNotes(id) {
+    const x = notesAll().find((c) => c.id === id);
+    if (!x) return;
+    const text = notesText(x);
+    if (navigator.share) {
+      try { await navigator.share({ title: "Super Sounds call notes", text }); return; }
+      catch (e) { if (e && e.name === "AbortError") return; }
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    a.download = `super-sounds-notes-${new Date(x.start).toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  function makeRemoteTools() {
+    const el = document.createElement("div");
+    el.id = "r-tools";
+    el.className = "r-tools hidden";
+    el.innerHTML = `<div class="r-tools-bar">
+        <button class="pill" id="r-mute" data-t="mute"></button>
+        <button class="pill" id="r-notes-btn" data-t="notes"></button>
+      </div>
+      <div class="r-notes hidden" id="r-notes">
+        <p class="note" id="r-note-where"></p>
+        <textarea id="r-note" rows="2" maxlength="2000" placeholder="Type a note. It's tagged with the time and the word he's on."></textarea>
+        <div class="r-btns small"><button class="pill main" data-t="add">➕ Add note</button>
+          <button class="pill" data-t="share-cur">📤 Share notes</button></div>
+        <p class="r-sum" id="r-sum"></p>
+        <ol class="r-list" id="r-list" reversed></ol>
+        <details class="r-old"><summary id="r-old-sum"></summary><div id="r-old"></div></details>
+        <p class="note">Notes stay on this device only. They're never sent to his iPad.</p>
+      </div>`;
+    document.body.insertBefore(el, app);
+    el.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-t]");
+      if (!b) return;
+      const t = b.dataset.t;
+      if (t === "mute") {
+        remote.muted = !remote.muted;
+        if (remote.local) remote.local.getAudioTracks().forEach((tr) => { tr.enabled = !remote.muted; });
+        renderTools();
+      } else if (t === "notes") {
+        rn.open = !rn.open;
+        renderTools();
+        if (rn.open) document.getElementById("r-note").focus();
+      } else if (t === "add") addNote();
+      else if (t === "share-cur") shareNotes(rn.cur);
+      else if (t === "share") shareNotes(b.dataset.id);
+      else if (t === "del" && confirm("Delete these notes from this device?")) {
+        notesPut(notesAll().filter((c) => c.id !== b.dataset.id));
+        renderTools();
+      }
+    });
+    el.querySelector("#r-note").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNote(); }
+    });
+  }
+  function renderTools() {
+    const el = document.getElementById("r-tools");
+    if (!el) return;
+    const all = notesAll();
+    const cur = all.find((c) => c.id === rn.cur);
+    el.classList.toggle("hidden", !remote.inCall && !cur);
+    const mute = document.getElementById("r-mute");
+    mute.classList.toggle("hidden", !remote.inCall);
+    mute.classList.toggle("danger", !!remote.muted);
+    mute.textContent = remote.muted ? "🔇 You're muted · tap to talk" : "🎙️ Mute me";
+    mute.setAttribute("aria-pressed", remote.muted ? "true" : "false");
+    const n = cur ? cur.notes.length : 0;
+    const nb = document.getElementById("r-notes-btn");
+    nb.textContent = `📝 Notes${n ? ` (${n})` : ""}${rn.open ? " ▲" : " ▼"}`;
+    nb.classList.toggle("main", rn.open);
+    document.getElementById("r-notes").classList.toggle("hidden", !rn.open);
+    if (!rn.open) return;
+    const where = nowWhere();
+    document.getElementById("r-note-where").textContent = where ? `Now: ${where}` : "";
+    const sum = cur ? tallySum(cur) : { g: 0, a: 0, s: 0 };
+    document.getElementById("r-sum").textContent = sum.g + sum.a + sum.s
+      ? `This call: ⭐ ${sum.g} · 🔁 ${sum.a}${sum.s ? ` · skipped ${sum.s}` : ""}` : "";
+    document.getElementById("r-list").innerHTML = cur ? cur.notes.slice().reverse().map((x) =>
+      `<li><b>${esc(clock(x.t))}</b>${x.at ? ` <span class="r-at">${esc(x.at)}</span>` : ""} ${esc(x.text)}</li>`).join("") : "";
+    const old = all.filter((c) => c.id !== rn.cur).reverse();
+    const det = el.querySelector(".r-old");
+    det.classList.toggle("hidden", !old.length);
+    document.getElementById("r-old-sum").textContent = `🗂 Earlier calls (${old.length})`;
+    document.getElementById("r-old").innerHTML = old.map((c) => `<div class="r-old-row">
+        <span>${esc(longDay(c.start))}, ${esc(clock(c.start))} · ${c.notes.length} note${c.notes.length === 1 ? "" : "s"}</span>
+        <button class="mini" data-t="share" data-id="${esc(c.id)}">📤 Share</button>
+        <button class="mini" data-t="del" data-id="${esc(c.id)}">🗑</button></div>`).join("");
   }
 
   function remoteBodyHTML(s) {
@@ -2913,6 +3111,7 @@
       else if (r === "finish") rSend({ t: "finish" });
       else if (r === "quiet") rSend({ t: "quiet" });
       else if (r === "home") rSend({ t: "home" });
+      else if (r === "great" || r === "again" || r === "skip") { tallyJudge(r); rAct(r); }
       else if (r === "pick") {
         const k = b.dataset.k;
         remote.picks = remote.picks.includes(k) ? remote.picks.filter((x) => x !== k) : remote.picks.concat(k).slice(-2);
