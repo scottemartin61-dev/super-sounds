@@ -45,6 +45,12 @@ taps a part he wants, and gets it by asking for it: the grown-up taps ✅ **He a
 In Grown-ups → Build-it, choose how he asks ("wheel" → "want wheel" → "I want the wheel" → "Can I have the wheel, please?")
 and whether the iPad says it for him straight away or waits 5 seconds first. Progress shows how many things he asked for on his own.
 
+### 🤖 Robot buddy
+A friendly robot sits in the corner of the word card. Every word charges its core (trying counts, not just ⭐), and
+⭐ Great makes it say a short line in a robot voice ("Let's go!", "Ten out of ten!"). When the core is full (end of a round,
+or every 5 words in Practice time) he picks what it does: 💥 Pop (its parts spring off and snap back), 🚀 Fly or 💃 Dance.
+Grown-ups → 🤖 Robot buddy turns it off or removes Pop, and counts what he picks.
+
 ### Break, All done and Quiet mode
 The card has two picture buttons for him: ✋ **Break** and 👋 **All done**. Either one pauses the game, says "Okay!", and lets
 the grown-up choose Keep going or Finish now (finishing still earns the present). Honouring them teaches him that asking works.

@@ -3,6 +3,18 @@
 Every change to Super Sounds, newest first. The version number matches `VERSION` in [sw.js](sw.js),
 so you can tell which version an iPad is running.
 
+## v21 · 2026-11-24 · 🤖 Robot buddy
+- A friendly robot sits in the corner of the word card (on by default; Grown-ups → 🤖 Robot buddy).
+- **Every word charges its core**, whether he got ⭐ Great, used up his tries, or the word was skipped, so trying is
+  what counts.
+- **⭐ Great makes it talk:** a short line in a robot voice, full of sounds he practises ("Let's go!", "Ten out of ten!",
+  "Level up!"). After 🔁 Again it shows a thinking face and "You can do it!" without talking over the coaching.
+- **Full power:** when the core is full (end of a round, or every 5 words in Practice time) he picks what it does:
+  💥 **Pop** (its parts spring off and snap back together), 🚀 **Fly** or 💃 **Dance**. It never breaks for good,
+  catches fire or gets taken away.
+- Grown-ups → 🤖 Robot buddy counts his picks, to show whether the big Pop moment or just having a choice is
+  what he likes. Pop can be switched off. Quiet mode turns off its sounds and movement.
+
 ## v20 · 2026-11-20 · Video call: QR code, mute and notes
 - **QR code:** while his iPad waits for someone to join, Grown-ups → 📹 Video call shows a **QR code** of the call link.
   The other grown-up can scan it with their phone's camera instead of being sent the link.

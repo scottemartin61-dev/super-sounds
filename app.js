@@ -52,6 +52,8 @@
     fxVol: 1,           // sound effects volume (0.35 / 0.65 / 1)
     greatFx: "every",   // sound on ⭐ Great: every / third / none
     kidStop: true,      // show his own ✋ Break and 👋 All done buttons
+    robot: true,        // 🤖 Robot buddy on the card
+    robotPop: true,     // offer 💥 Pop as one of the robot's full-power choices
     autoHear: true,     // play his voice back by itself after each try
     triesGoal: 0,       // tries per Practice time to aim for (0 = no goal)
     buildBtn: true,     // show the 🔧 Build-it button on the home screen
@@ -99,6 +101,7 @@
     d.starClips = Array.isArray(d.starClips) ? d.starClips : [];   // [{id, sound, w, hl, pic, day, type}] (videos in IndexedDB)
     d.builds = Array.isArray(d.builds) ? d.builds : [];   // finished Build-it games
     d.tries = d.tries || {};         // "2026-11-17" -> tries (Great or Again taps) that day
+    d.robotPicks = d.robotPicks && typeof d.robotPicks === "object" ? d.robotPicks : {};   // { pop: n, fly: n, dance: n }
     return d;
   }
 
@@ -232,14 +235,14 @@
     speechSynthesis.addEventListener?.("voiceschanged", pickVoice);
   }
 
-  function say(text, onEnd, rate) {
+  function say(text, onEnd, rate, pitch) {
     if (!canSpeak) { onEnd && onEnd(); return; }
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.lang = voice ? voice.lang : "en-US";
     u.rate = rate || S().rate;
-    u.pitch = 1.05;
+    u.pitch = pitch || 1.05;
     u.volume = S().quiet ? 0.6 : 1;
     if (onEnd) { u.onend = onEnd; u.onerror = onEnd; }
     speechSynthesis.speak(u);
@@ -1094,6 +1097,7 @@
     const items = pickWords(sound, level, S().perRound);
     if (!items.length) { toast("No words for this level yet."); return; }
     round = { sound, level, items, paused: false, idx: 0, tries: 0, greats: 0, busy: false, sayTok: 0, coach: 0 };
+    botCharge = 0;
     show("play");
     if (S().autoSay) sayCurrent(); // called inside the tap so iOS allows it
   }
@@ -1228,6 +1232,7 @@
             <span>🔈</span><div class="meter-track"><div class="meter-fill"></div></div><span>📣</span></div>` : ""}
           <div class="msg" id="msg" aria-live="polite"></div>
           ${kidStopHTML()}
+          ${botMiniHTML()}
         </main>
         <section class="coach" id="coach" aria-label="How to make the sound" ${round.coach ? "" : "hidden"}>${round.coach ? coachHTML() : ""}</section>
         <section class="kid-row ${mic ? "" : "two"}">
@@ -1318,7 +1323,17 @@
     setMsg(["Great job!", "You did it!", "Super sound!", "Wow!", "Nice!"][Math.floor(Math.random() * 5)]);
     sendState();
     const played = greatSound();
-    setTimeout(nextWord, played && theme().sfx === "flush" ? 1400 : 1100);   // let the flush finish first
+    const flushing = played && theme().sfx === "flush";
+    if (botOn()) {
+      // The robot cheers with a short line, then on to the next word.
+      botFace("happy");
+      const go = once(wordDone);
+      setTimeout(() => {
+        if (screen !== "play" || !round) { go(); return; }
+        botSay(BOT_LINES[botLineN++ % BOT_LINES.length], () => setTimeout(go, 200));
+      }, flushing ? 1200 : 350);
+      setTimeout(go, 5000);   // in case the voice never finishes
+    } else setTimeout(wordDone, flushing ? 1400 : 1100);   // let the flush finish first
   }
 
   function onAgain() {
@@ -1331,10 +1346,12 @@
       round.busy = true;
       setJudgeDisabled(true);
       setMsg("Good trying! Let's try a new one.");
-      setTimeout(nextWord, 1500);
+      if (botOn()) { botFace("think"); botBubble("Good trying!"); }
+      setTimeout(wordDone, 1500);
     } else {
       round.coach = round.tries;   // 1: slower + how-to card, 2: the sound on its own first
       showCoach();
+      if (botOn()) { botFace("think"); botBubble("You can do it!"); }
       sendState();
       setMsg(round.coach === 1 ? "Good trying! Let's go slow 🐢" : "Sound first, then the word 👂");
       setTimeout(() => { if (screen === "play") sayCurrent(); }, 500);
@@ -1345,7 +1362,7 @@
     if (round.busy) return;
     round.busy = true;
     if (rec.state === "listening") { resetRecording(); updateKidRow(); }
-    nextWord();
+    wordDone();
   }
 
   function nextWord() {
@@ -1382,6 +1399,132 @@
     if (round.session && session && session.left != null)
       setMsg(`${session.left === 1 ? "Last one" : session.left + " more"}, then ${nextIcon()}`);
     if (S().autoSay) setTimeout(() => { if (screen === "play") sayCurrent(); }, 350);
+  }
+
+  // =================================================================
+  //  🤖 Robot buddy: a friendly robot in the corner of the card. Every word charges its core (tries
+  //  count, not just ⭐), and ⭐ Great makes it say a short line full of sounds he practises.
+  //  When the core is full he picks what it does: 💥 Pop (its parts spring off and snap back),
+  //  🚀 Fly or 💃 Dance. It never breaks for good, catches fire or gets taken away.
+  // =================================================================
+  const BOT_LINES = ["Let's go!", "Ten out of ten!", "Whoa!", "Super!", "Level up!", "Yes!", "Go go go!",
+    "Beep boop!", "Five stars!", "Very cool!"];
+  const BOT_FACES = { idle: "◕‿◕", happy: "^‿^", wow: "°o°", think: "•‿•" };
+  const BOT_DO = {
+    pop: { e: "💥", name: "Pop it", line: "Whoa! Pop!" },
+    fly: { e: "🚀", name: "Fly it", line: "Let's go! I might fly!" },
+    dance: { e: "💃", name: "Dance", line: "Beep boop! Dance time!" },
+  };
+  const botOn = () => !!S().robot;
+  const botSize = () => (round && !round.session ? round.items.length : 5);
+  const once = (f) => { let done = false; return () => { if (!done) { done = true; f(); } }; };
+  let botCharge = 0, botMom = null, botLineN = Math.floor(Math.random() * 10), botBubbleT = 0;
+
+  const botCellsHTML = () => Array.from({ length: botSize() },
+    (_, i) => `<span class="bot-cell ${i < botCharge ? "on" : ""}"></span>`).join("");
+  function botMiniHTML() {
+    if (!botOn()) return "";
+    return `<div class="bot-mini" id="bot" aria-hidden="true">
+        <div class="bot-head"><span class="bot-face" id="bot-face">${BOT_FACES.idle}</span></div>
+        <div class="bot-cells" id="bot-cells">${botCellsHTML()}</div>
+        <div class="bot-bubble" id="bot-bubble"></div>
+      </div>`;
+  }
+  function botFace(kind) {
+    const f = document.getElementById("bot-face");
+    if (f) f.textContent = BOT_FACES[kind] || BOT_FACES.idle;
+    const b = document.getElementById("bot");
+    if (b) { b.classList.remove("hop"); void b.offsetWidth; if (kind === "happy") b.classList.add("hop"); }
+  }
+  function botBubble(text) {
+    const el = document.getElementById("bot-bubble");
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add("show");
+    clearTimeout(botBubbleT);
+    botBubbleT = setTimeout(() => el.classList.remove("show"), 2400);
+  }
+  // The robot's voice: the iPad voice, higher and a little quicker.
+  const botVoice = (text, onEnd) => say(text, onEnd, Math.min(1, S().rate + 0.1), 1.6);
+  function botSay(text, onEnd) { botBubble(text); botVoice(text, onEnd); }
+
+  // Generated robot sounds (no files). Off with sound effects or Quiet mode.
+  function botSfx(kind) {
+    if (!fxOn()) return;
+    const ctx = audioCtx();
+    if (!ctx) return;
+    const tone = (f0, f1, t0, dur, type, vol) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      const t = ctx.currentTime + t0;
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g).connect(fxOut(ctx));
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    };
+    if (kind === "pop") { tone(260, 880, 0, 0.22, "sine", 0.16); tone(880, 220, 1.55, 0.3, "sine", 0.13); }   // boing out, boing back
+    else if (kind === "fly") tone(140, 1100, 0, 1.1, "triangle", 0.12);
+    else if (kind === "dance") [523, 659, 784, 659, 523, 659, 784].forEach((f, i) => tone(f, f * 1.01, i * 0.3, 0.16, "square", 0.04));
+    else if (kind === "charge") tone(220, 880, 0, 0.5, "triangle", 0.12);
+  }
+
+  // Each finished word (⭐, three tries, or skipped) charges one segment of the core.
+  function wordDone() {
+    if (screen !== "play" || !round) return;
+    if (!botOn()) { nextWord(); return; }
+    botCharge++;
+    const c = document.getElementById("bot-cells");
+    if (c) c.innerHTML = botCellsHTML();
+    if (botCharge >= botSize() && !anyPaused()) { botCharge = 0; robotMoment(nextWord); }
+    else nextWord();
+  }
+
+  // Full power: he picks what the robot does, then the game carries on.
+  function robotMoment(then) {
+    const scr = app.querySelector(".screen");
+    if (!scr) { then(); return; }
+    stopSpeaking();
+    const el = document.createElement("div");
+    el.className = "bot-stage";
+    el.innerHTML = `<div class="bot-big" aria-hidden="true">
+        <div class="bb-ant"></div>
+        <div class="bb-head"><span class="bot-face">${BOT_FACES.wow}</span></div>
+        <div class="bb-arm l"></div><div class="bb-arm r"></div>
+        <div class="bb-body"><div class="bb-core">⚡</div></div>
+        <div class="bb-leg l"></div><div class="bb-leg r"></div>
+        <div class="bb-trail">✨</div>
+      </div>
+      <div class="bot-bubble big">Full power! Pick one!</div>
+      <div class="bot-picks">${Object.keys(BOT_DO).filter((k) => k !== "pop" || S().robotPop).map((k) =>
+        `<button class="bot-pick" data-act="bot-pick" data-k="${k}"><span>${BOT_DO[k].e}</span><small>${BOT_DO[k].name}</small></button>`).join("")}</div>`;
+    scr.appendChild(el);
+    const mom = botMom = { el, then, picked: false };
+    botSfx("charge");
+    botVoice("Full power! Pick one!");
+    mom.timer = setTimeout(() => botPick("fly", false), 30000);   // nobody picked: it flies, and it isn't counted
+  }
+
+  function botPick(k, counted = true) {
+    const mom = botMom;
+    if (!mom || mom.picked || !BOT_DO[k]) return;
+    mom.picked = true;
+    clearTimeout(mom.timer);
+    if (counted) { data.robotPicks[k] = (data.robotPicks[k] || 0) + 1; save(); }
+    const el = mom.el;
+    el.classList.add("doing", "do-" + k);
+    el.querySelector(".bot-face").textContent = BOT_FACES.happy;
+    el.querySelector(".bot-bubble").textContent = BOT_DO[k].line;
+    botSfx(k);
+    botVoice(BOT_DO[k].line);
+    setTimeout(() => {
+      el.remove();
+      if (botMom === mom) botMom = null;
+      mom.then();
+    }, 3000);
   }
 
   // A new sticker for his book (or a repeat once he has them all).
@@ -1520,6 +1663,7 @@
   // ---------- Running the session ----------
   function startSession() {
     newTrySession();
+    botCharge = 0;
     const keys = sessionPicks.filter((k) => S().sounds[k] && S().sounds[k].on);
     if (!keys.length) return;
     const mins = sessionMins();
@@ -3539,6 +3683,21 @@
         </section>
 
         <section class="panel">
+          <h2>🤖 Robot buddy</h2>
+          <p class="note">A friendly robot in the corner of the card. Every word charges its core (tries count, not just ⭐),
+            and ⭐ Great makes it say a short line full of sounds he's practising ("Let's go!", "Ten out of ten!").
+            When the core is full he picks what it does: 💥 Pop (its parts spring off and snap back), 🚀 Fly or 💃 Dance.
+            It never breaks for good or gets taken away. Say its line with it, then pause and give him a turn.</p>
+          <label class="toggle"><input type="checkbox" data-set="robot" ${st.robot ? "checked" : ""}>
+            <span>Show the robot</span></label>
+          <label class="toggle"><input type="checkbox" data-set="robotPop" ${st.robotPop ? "checked" : ""}>
+            <span>Offer 💥 <b>Pop</b> as one of the choices</span></label>
+          <p class="note">What he's picked so far: 💥 Pop ${data.robotPicks.pop || 0} · 🚀 Fly ${data.robotPicks.fly || 0} ·
+            💃 Dance ${data.robotPicks.dance || 0}. If he nearly always picks Pop, the big moment is what he likes; if it's
+            spread out, it's having the choice.</p>
+        </section>
+
+        <section class="panel">
           <h2>Game settings</h2>
           <div class="field">Words per round
             ${radioGroup("perRound", [[3, "3"], [5, "5"], [8, "8"]], st.perRound)}
@@ -3655,7 +3814,7 @@
       case "perRound": st.perRound = Number(el.value); break;
       case "rate": st.rate = Number(el.value); break;
       case "autoSay": case "mic": case "sfx": case "voiceMeter": case "useMyVoice": case "mixMine": case "handsFree": case "realSounds":
-      case "kidStop": case "autoHear": case "buildBtn": case "saveTries": case "starClips":
+      case "kidStop": case "autoHear": case "buildBtn": case "saveTries": case "starClips": case "robot": case "robotPop":
         st[key] = el.checked; break;
       case "quiet": st.quiet = el.checked; applyQuiet(); break;
       case "warnWords": case "triesGoal": case "fxVol": st[key] = Number(el.value); break;
@@ -3698,6 +3857,7 @@
     "s-resume": () => resumeAny(),
     "s-finish": () => finishAny(),
     "kid-break": () => pauseAny("break"),
+    "bot-pick": (b) => botPick(b.dataset.k),
     "b-open": () => openBuildPick(),
     "b-kit": (b) => startBuild(b.dataset.kit),
     "b-part": (b) => pickPart(Number(b.dataset.i)),
